@@ -61,14 +61,17 @@ func ValidateStruct(s interface{}, strict bool) Adapter {
 
 			// 1. Try to insert form data into the struct
 			decoder := schema.NewDecoder()
+
+			// A) Developer forgot about a field
+			// B) Client is messing with the request fields
+			if !strict {
+				decoder.IgnoreUnknownKeys(true)
+			}
+
 			err = decoder.Decode(s, r.Form)
 			// Even if there is an error, we can still validate what we have
 			if err != nil {
-				// A) Developer forgot about a field
-				// B) Someone is messing with the request fields
-				if strict {
-					panic(err.Error()) // Use Recover() adapter
-				}
+				panic(err.Error()) // Use Recover() adapter
 			}
 
 			// 2. Validate the struct data rules
@@ -83,6 +86,9 @@ func ValidateStruct(s interface{}, strict bool) Adapter {
 				})
 				return
 			}
+
+			// Save struct/map for handler
+			// response = &s
 
 			// If validation fails, we never make it this far
 			h.ServeHTTP(w, r)

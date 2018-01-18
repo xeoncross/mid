@@ -20,6 +20,8 @@ func Chain(handler interface{}, adapters ...Adapter) (h http.Handler) {
 		h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			response = handler(r)
 		})
+		// TODO support httprouter
+		// case func(http.ResponseWriter, *http.Request, httprouter.Params):
 	default:
 		log.Fatal("Invalid Adapt Handler", handler)
 	}

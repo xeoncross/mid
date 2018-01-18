@@ -3,16 +3,13 @@ package main
 import (
 	"errors"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
 
 	"github.com/xeoncross/mid"
 )
-
-func indexHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "Hello, World!")
-}
 
 func panicHandler(w http.ResponseWriter, r *http.Request) {
 	panic("Unexpected panic/error!")
@@ -57,5 +54,35 @@ func main() {
 	err := http.ListenAndServe(listenAddr, router)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
+	}
+}
+
+// Homepage displays a list of routes
+func indexHandler(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Content-Type", "text/html")
+
+	// Example inline
+	var indexHTML = `
+  <ul>{{ range $value := . }}
+    <li><a href="{{ $value }}">{{ $value }}</a></li>
+  {{ end }}</ul><br/><br />`
+
+	// Anonymous struct to hold template data
+	data := []string{
+		"/json",
+		"/error",
+		"/panic",
+		"/caught",
+	}
+
+	tmpl, err := template.New("index").Parse(indexHTML)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := tmpl.Execute(w, data); err != nil {
+		fmt.Println("Template Error", err)
 	}
 }
