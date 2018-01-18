@@ -21,20 +21,10 @@ func main() {
 
 	router.HandleFunc("/", indexHandler)
 
-	strict := false
 	router.Handle("/validate", mid.Chain(
 		newPostHandler,
 		mid.JSON(),
-		mid.ValidateStruct(new(InputNewPost), strict),
-		mid.Recover(debug),
-		mid.Logging(logger),
-	))
-
-	strict = true
-	router.Handle("/validate/strict", mid.Chain(
-		newPostHandler,
-		mid.JSON(),
-		mid.ValidateStruct(new(InputNewPost), strict),
+		mid.ValidateStruct(new(InputNewPost)),
 		mid.Recover(debug),
 		mid.Logging(logger),
 	))
@@ -73,16 +63,6 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
       Title:<input type="text" name="title" /><br />
 			Email:<input type="text" name="email" /><br />
 			Message: <textarea name="message">Body</textarea><br>
-      <input type="submit" value="Submit">
-  </form>
-
-	<h2>Strict Validation</h2>
-  <p>(no extra fields allowed)</p>
-	<form action="/validate/strict" method="post">
-      Title:<input type="text" name="title" /><br />
-			Email:<input type="text" name="email" /><br />
-			Message: <textarea name="message">Body</textarea><br>
-			Unknown:<input type="text" name="unknown" /><br />
       <input type="submit" value="Submit">
   </form>
 	`

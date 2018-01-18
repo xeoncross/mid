@@ -2,7 +2,6 @@ package mid
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 
@@ -51,7 +50,7 @@ func Recover(debug bool) Adapter {
 }
 
 // ValidateStruct provided
-func ValidateStruct(s interface{}, strict bool) Adapter {
+func ValidateStruct(s interface{}) Adapter {
 	return func(h http.Handler, response *interface{}) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var err error
@@ -64,31 +63,20 @@ func ValidateStruct(s interface{}, strict bool) Adapter {
 
 			// A) Developer forgot about a field
 			// B) Client is messing with the request fields
-			if !strict {
-				decoder.IgnoreUnknownKeys(true)
-			}
+			decoder.IgnoreUnknownKeys(true)
 
-			err = decoder.Decode(s, r.Form)
 			// Even if there is an error, we can still validate what we have
-			if err != nil {
-				panic(err.Error()) // Use Recover() adapter
-			}
+			_ = decoder.Decode(s, r.Form)
 
 			// 2. Validate the struct data rules
 			_, err = govalidator.ValidateStruct(s)
 			if err != nil {
-				fmt.Println("Validation Error: " + err.Error())
-
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(map[string]interface{}{
-					// "errors": err.(govalidator.Errors).Errors(),
 					"errors": govalidator.ErrorsByField(err),
 				})
 				return
 			}
-
-			// Save struct/map for handler
-			// response = &s
 
 			// If validation fails, we never make it this far
 			h.ServeHTTP(w, r)
