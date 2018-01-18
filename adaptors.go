@@ -36,6 +36,8 @@ func Recover(debug bool) Adapter {
 					if debug {
 						if str, ok := err.(string); ok {
 							http.Error(w, str, 500)
+						} else if e, ok := err.(error); ok {
+							http.Error(w, e.Error(), 500)
 						}
 						return
 					}
@@ -92,7 +94,7 @@ func ValidateStruct(s interface{}, strict bool) Adapter {
 // https://google.github.io/styleguide/jsoncstyleguide.xml?showone=error#error
 // The real feature here is allowing handlers to return errors, structs, maps,
 // etc... while having the response standardized and converted to JSON
-func JSON(debug bool) Adapter {
+func JSON() Adapter {
 	return func(h http.Handler, response *interface{}) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -102,7 +104,6 @@ func JSON(debug bool) Adapter {
 			var payload = make(map[string]interface{})
 
 			if e, ok := (*response).(error); ok {
-				fmt.Println("handler returned error", e.Error()) // debug
 				payload["error"] = e.Error()
 
 				// } else if s, ok := (*response).(fmt.Stringer); ok {

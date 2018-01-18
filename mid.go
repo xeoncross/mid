@@ -8,8 +8,8 @@ import (
 // Adapter wraps an http.Handler with additional functionality.
 type Adapter func(http.Handler, *interface{}) http.Handler
 
-// Adapt h with all specified adapters.
-func Adapt(handler interface{}, adapters ...Adapter) (h http.Handler) {
+// Chain handler with all specified adapters
+func Chain(handler interface{}, adapters ...Adapter) (h http.Handler) {
 	var response interface{}
 	switch handler := handler.(type) {
 	case http.Handler:
