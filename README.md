@@ -2,7 +2,7 @@
 
 Simple Go HTTP middleware for reducing code substantially when building a web app. `net/http` compatible.
 
-See the [examples](http://github.com/xeoncross/mid/examples).
+See the [examples](https://github.com/Xeoncross/mid/tree/master/examples).
 
 ## Why?
 
