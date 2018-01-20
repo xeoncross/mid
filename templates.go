@@ -1,8 +1,8 @@
 package mid
 
 import (
-	"fmt"
 	"html/template"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,12 +12,6 @@ import (
 // Middleware to allow http handlers to return values and have them injected
 // into templates automatically
 //
-
-// http://blog.questionable.services/article/approximating-html-template-inheritance/ (v3)
-// https://hackernoon.com/golang-template-2-template-composition-and-how-to-organize-template-files-4cb40bcdf8f6 (v2)
-// https://github.com/asit-dhal/golang-template-layout/blob/master/src/templmanager/templatemanager.go (v2 project)
-// https://stackoverflow.com/questions/38686583/golang-parse-all-templates-in-directory-and-subdirectories (v1)
-// https://gist.github.com/tmc/5562522 (original idea)
 
 // FindTemplates in path recursively
 func FindTemplates(path string, extension string) (paths []string, err error) {
@@ -37,7 +31,7 @@ func AddTemplates(Templates *template.Template, path string, extension string) (
 	return filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
 		if err == nil {
 			if strings.Contains(path, extension) {
-				fmt.Printf("\tAdding %s\n", path)
+				// fmt.Printf("\tAdding %s\n", path)
 				_, err = Templates.ParseFiles(path)
 			}
 		}
@@ -56,47 +50,41 @@ func LoadAllTemplates(extension string, paths ...string) (err error) {
 	// Create new template object each run to allow refreshing
 	Templates = make(map[string]*template.Template)
 
-	var pagePath string
-	pagePath, paths = paths[0], paths[1:]
-
-	// fmt.Println(pagePath)
-	// fmt.Println(paths)
+	var pagesPath string
+	pagesPath, paths = strings.Trim(paths[0], "/."), paths[1:]
 
 	var pages []string
-	pages, err = FindTemplates(pagePath, extension)
+	pages, err = FindTemplates(pagesPath, extension)
 	if err != nil {
 		return
 	}
 
-	for _, pagePath = range pages {
+	for _, pagePath := range pages {
 
 		basename := filepath.Base(pagePath)
-		name := strings.TrimSuffix(basename, extension)
 
 		// Load this template
-		Templates[name] = template.Must(template.ParseFiles(pagePath))
+		Templates[basename] = template.Must(template.ParseFiles(pagePath))
 
 		// Each add all the includes, partials, and layouts
 		if len(paths) > 0 {
 			for _, templateDir := range paths {
-				AddTemplates(Templates[name], templateDir, extension)
+				AddTemplates(Templates[basename], templateDir, extension)
 			}
 		}
 
 		// Reporting
-		fmt.Println(pagePath, name)
-		for _, p := range Templates[name].Templates() {
-			fmt.Printf("\t%s\n", p.Name())
-		}
+		// fmt.Println(pagePath, name)
+		// for _, p := range Templates[name].Templates() {
+		// 	fmt.Printf("\t%s\n", p.Name())
+		// }
 
-		fmt.Println(Templates[name].ExecuteTemplate(os.Stdout, basename, nil))
-
+		// fmt.Println(Templates[basename].ExecuteTemplate(os.Stdout, basename, nil))
 	}
 
 	return
 }
 
-/*
 // Render a template by name using the result of a handler
 func Render(templateName string) Adapter {
 	return func(h http.Handler, response *interface{}) http.Handler {
@@ -107,17 +95,18 @@ func Render(templateName string) Adapter {
 
 			// If error, load error template instead
 			if _, ok := (*response).(error); ok {
-				// As long as it exists...
-				if Templates.Lookup("error") != nil {
-					templateName = "error"
+				// We can do this in one of two ways
+				if Templates[templateName].Lookup("error.html") != nil {
+					templateName = "error.html"
+				} else if _, ok := Templates["error.html"]; ok {
+					templateName = "error.html"
 				}
 			}
 
-			if err := Templates.ExecuteTemplate(w, templateName, response); err != nil {
+			if err := Templates[templateName].ExecuteTemplate(w, templateName, response); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 
 		})
 	}
 }
-*/
