@@ -21,6 +21,7 @@ func Chain(handler interface{}, adapters ...Adapter) (h http.Handler) {
 			response = handler(r)
 		})
 		// TODO support httprouter
+		// https://github.com/carbocation/interpose/blob/master/adaptors/negroni.go
 		// case func(http.ResponseWriter, *http.Request, httprouter.Params):
 	default:
 		log.Fatal("Invalid Adapt Handler", handler)
