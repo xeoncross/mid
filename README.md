@@ -11,7 +11,8 @@ Most middleware libraries solve easy problems like error recovery and logging. I
 ### Mid is
 
 - Fast
-- Simple and free from slow, magic packages like `reflect`.
+- Simple
+- Free from slow, "magic" functionality provided by `reflect`.
 - DRY ([Don't repeat yourself](https://en.wikipedia.org/wiki/Don%27t_repeat_yourself))
 - Compatible with the big three http routers/multiplexers:
   - `net/http`

@@ -2,7 +2,6 @@ package mid
 
 import (
 	"html/template"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +30,6 @@ func AddTemplates(Templates *template.Template, path string, extension string) (
 	return filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
 		if err == nil {
 			if strings.Contains(path, extension) {
-				// fmt.Printf("\tAdding %s\n", path)
 				_, err = Templates.ParseFiles(path)
 			}
 		}
@@ -60,7 +58,6 @@ func LoadAllTemplates(extension string, paths ...string) (err error) {
 	}
 
 	for _, pagePath := range pages {
-
 		basename := filepath.Base(pagePath)
 
 		// Load this template
@@ -72,41 +69,7 @@ func LoadAllTemplates(extension string, paths ...string) (err error) {
 				AddTemplates(Templates[basename], templateDir, extension)
 			}
 		}
-
-		// Reporting
-		// fmt.Println(pagePath, name)
-		// for _, p := range Templates[name].Templates() {
-		// 	fmt.Printf("\t%s\n", p.Name())
-		// }
-
-		// fmt.Println(Templates[basename].ExecuteTemplate(os.Stdout, basename, nil))
 	}
 
 	return
-}
-
-// Render a template by name using the result of a handler
-func Render(templateName string) Adapter {
-	return func(h http.Handler, response *interface{}) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-			// Run first
-			h.ServeHTTP(w, r)
-
-			// If error, load error template instead
-			if _, ok := (*response).(error); ok {
-				// We can do this in one of two ways
-				if Templates[templateName].Lookup("error.html") != nil {
-					templateName = "error.html"
-				} else if _, ok := Templates["error.html"]; ok {
-					templateName = "error.html"
-				}
-			}
-
-			if err := Templates[templateName].ExecuteTemplate(w, templateName, response); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-
-		})
-	}
 }

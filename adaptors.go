@@ -111,3 +111,36 @@ func JSON() Adapter {
 		})
 	}
 }
+
+// ErrorTemplateName default
+var ErrorTemplateName = "error.html"
+
+// Render a template by name using the result of a handler
+// Make sure to call LoadAllTemplates first
+func Render(templateName string) Adapter {
+	return func(h http.Handler, response *interface{}) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+			// Run first
+			h.ServeHTTP(w, r)
+
+			fileName := templateName
+
+			// If error, load error template instead
+			if _, ok := (*response).(error); ok {
+				// We can do this in one of two ways
+				if Templates[fileName].Lookup(ErrorTemplateName) != nil {
+					templateName = ErrorTemplateName
+				} else if _, ok := Templates[ErrorTemplateName]; ok {
+					templateName = ErrorTemplateName
+					fileName = ErrorTemplateName
+				}
+			}
+
+			if err := Templates[fileName].ExecuteTemplate(w, templateName, response); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+
+		})
+	}
+}
