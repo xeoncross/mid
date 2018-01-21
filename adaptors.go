@@ -2,11 +2,13 @@ package mid
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 
 	"github.com/asaskevich/govalidator"
 	"github.com/gorilla/schema"
+	"github.com/oxtoacart/bpool"
 )
 
 //
@@ -135,12 +137,28 @@ func Render(templateName string) Adapter {
 					templateName = ErrorTemplateName
 					fileName = ErrorTemplateName
 				}
+
+				fmt.Println(response, templateName, fileName)
 			}
 
-			if err := Templates[fileName].ExecuteTemplate(w, templateName, response); err != nil {
+			// Create a buffer to temporarily write to and check if any errors were encounted.
+			buf := bufpool.Get()
+			defer bufpool.Put(buf)
+
+			if err := Templates[fileName].ExecuteTemplate(buf, templateName, response); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 
+			// Set the header and write the buffer to the http.ResponseWriter
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			buf.WriteTo(w)
 		})
 	}
+}
+
+// Make sure any template errors are caught before sending content to client
+var bufpool *bpool.BufferPool
+
+func init() {
+	bufpool = bpool.NewBufferPool(64)
 }

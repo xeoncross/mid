@@ -22,7 +22,7 @@ func main() {
 
 	http.Handle("/", mid.Chain(indexHandler, mid.Render("home.html")))
 	http.Handle("/about", mid.Chain(aboutHandler, mid.Render("about.html")))
-	http.Handle("/error", mid.Chain(errorHandler, mid.Render("about.html")))
+	http.Handle("/error", mid.Chain(errorHandler, mid.Render("about.html"), mid.Recover(true)))
 
 	fmt.Println("started on ", listenAddr)
 	err = http.ListenAndServe(listenAddr, nil)
@@ -42,6 +42,10 @@ func indexHandler(r *http.Request) interface{} {
 
 // Passes nothing to the template, just a static template
 func aboutHandler(r *http.Request) interface{} {
+	if r.URL.Query().Get("error") != "" {
+		return errors.New("Oh no! You broke it")
+	}
+
 	return ""
 }
 
