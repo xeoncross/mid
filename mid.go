@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"unsafe"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -16,11 +17,11 @@ type ValidationHandler interface {
 	ServeHTTP(http.ResponseWriter, *http.Request, ValidationError) (int, error)
 }
 
-func cloneHandler(handler interface{}) interface{} {
-	// return reflect.New(reflect.TypeOf(handler)).Elem().Interface().(ValidationHandler)
-	// return reflect.Zero(reflect.TypeOf(handler)).Interface().(ValidationHandler)
-	return reflect.Zero(reflect.TypeOf(handler)).Interface()
-}
+// func cloneHandler(handler interface{}) interface{} {
+// 	// return reflect.New(reflect.TypeOf(handler)).Elem().Interface().(ValidationHandler)
+// 	// return reflect.Zero(reflect.TypeOf(handler)).Interface().(ValidationHandler)
+// 	return reflect.Zero(reflect.TypeOf(handler)).Interface()
+// }
 
 // Validate a http.Handler providing JSON or HTML responses
 func Validate(handler ValidationHandler, debug bool) httprouter.Handle { // http.Handler {
@@ -35,9 +36,16 @@ func Validate(handler ValidationHandler, debug bool) httprouter.Handle { // http
 	e := reflect.Indirect(reflect.ValueOf(handler))
 	for i := 0; i < e.NumField(); i++ {
 		field := e.Field(i)
+
+		// v1: Only look for templates in public struct properties
 		// fmt.Printf("%s (%s) = %v\n", e.Type().Field(i).Name, field.Kind(), field.String())
 		if field.IsValid() && field.Kind() == reflect.Ptr && !field.IsNil() {
-			if t, ok := field.Interface().(*template.Template); ok {
+
+			// v2: only look for templates in private struct properties
+			// https://stackoverflow.com/questions/42664837/access-unexported-fields-in-golang-reflect
+			fieldValue := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
+
+			if t, ok := fieldValue.Interface().(*template.Template); ok {
 				if t.Name() == "error" || t.Name() == "error.html" {
 					errorTemplate = t
 				} else {
@@ -178,7 +186,7 @@ func Validate(handler ValidationHandler, debug bool) httprouter.Handle { // http
 
 			if err != nil {
 				response = err
-				if status == 0 {
+				if status == http.StatusOK {
 					status = http.StatusBadRequest
 				}
 			} else {

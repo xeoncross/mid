@@ -61,13 +61,14 @@ func ValidateStruct(s interface{}, r *http.Request) error {
 		// B) Client is messing with the request fields
 		decoder.IgnoreUnknownKeys(true)
 
-		// fmt.Printf("%v -----<>----- %v\n", s, r.Form)
+		// TODO https://github.com/gorilla/schema/blob/master/decoder.go#L203
 
 		// Even if there is an error, we can still validate what we have
-		err := decoder.Decode(s, r.Form)
-		if err != nil {
-			return err
-		}
+		decoder.Decode(s, r.Form)
+		// err := decoder.Decode(s, r.Form)
+		// if err != nil {
+		// 	return err
+		// }
 	}
 
 	// 2. Validate the struct data rules

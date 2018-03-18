@@ -9,64 +9,117 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/julienschmidt/httprouter"
 )
 
-func Use(a ...interface{}) {}
+// Global "A" Template which simply dumps the template variables on render
+var aTemplate = template.Must(template.New("A").Parse(`A: {{printf "%#v" .}}`))
 
-func PostBody(data interface{}) io.Reader {
+//
+// Helper Functions
+//
+
+// Keep the compiler from optimizing code away
+func use(a ...interface{}) {}
+
+// JSON body
+func jsonBody(data interface{}) (io.Reader, string) {
 
 	b, err := json.Marshal(data)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	return bytes.NewReader(b)
+	return bytes.NewReader(b), "application/json"
 }
 
-type MyHandler struct {
-	Username         string
-	Name             string
-	Age              int `valid:"required"`
-	validationErrors ValidationError
-	Template         *template.Template
+// HTML Form Data
+func formBody(data *url.Values) (io.Reader, string) {
+	return strings.NewReader(data.Encode()), "application/x-www-form-urlencoded"
 }
 
-var s string
+//
+// HTTP Test Handlers
+//
 
-func (m MyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, validationErrors ValidationError) (int, error) {
+type handlerWithTemplate struct {
+	Username string
+	Name     string
+	Age      int `valid:"required"`
 
-	if &validationErrors != nil {
-		return 0, nil
-	}
-
-	m.validationErrors = validationErrors
-	s = fmt.Sprintf("Inside: %#v\n", m)
-	// panic("inside")
-	return http.StatusOK, nil
+	validationError ValidationError
+	template        *template.Template
+	errorTemplate   *template.Template // Nil for some of the tests
 }
 
-func TestPassTemplateValidation(t *testing.T) {
+func (h handlerWithTemplate) ServeHTTP(w http.ResponseWriter, r *http.Request, validationErrors ValidationError) (int, error) {
+	fmt.Println("ServeHTTP called")
+	h.validationError = validationErrors
+	return 0, nil
+}
 
-	data := PostBody(struct {
+func TestPassTemplateValidationJSON(t *testing.T) {
+
+	data := struct {
 		Username string
 		Age      int
-		Template string
-	}{Username: "John", Age: 10, Template: "badt"})
+		template string
+	}{Username: "John", Age: 10, template: "foo"}
 
-	req, err := http.NewRequest("POST", "/hello/John", data)
+	body, contentType := jsonBody(data)
+
+	req, err := http.NewRequest("POST", "/hello/John", body)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	req.Header.Add("Content-Type", "application/json")
-	// req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Add("Content-Type", contentType)
 
 	rr := httptest.NewRecorder()
 
-	h := &MyHandler{Template: template.Must(template.New("foo").Parse(`Result: {{.}}`))}
+	h := &handlerWithTemplate{template: aTemplate}
+
+	router := httprouter.New()
+	router.POST("/hello/:Name", Validate(h, false))
+	router.ServeHTTP(rr, req)
+
+	// var tpl bytes.Buffer
+	// if err := h.Template.Execute(&tpl, data); err != nil {
+	// 	t.Error(err)
+	// }
+	//
+	// fmt.Println(rr.Body.String())
+	// fmt.Println(tpl.String())
+
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+		t.Error(rr.Body.String())
+	}
+
+}
+
+func TestPassTemplateValidationForm(t *testing.T) {
+	data := &url.Values{}
+	data.Add("Username", "John")
+	data.Add("Age", "10")
+	data.Add("template", "foo")
+
+	body, contentType := formBody(data)
+
+	req, err := http.NewRequest("POST", "/hello/John", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	rr := httptest.NewRecorder()
+
+	h := &handlerWithTemplate{template: aTemplate}
 
 	router := httprouter.New()
 	router.POST("/hello/:Name", Validate(h, false))
@@ -78,9 +131,41 @@ func TestPassTemplateValidation(t *testing.T) {
 		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
 		t.Error(rr.Body.String())
 	}
-
 }
 
+// Fail validation and load template
+func TestFailTemplateValidationForm(t *testing.T) {
+	data := &url.Values{}
+	data.Add("Username", "John")
+	data.Add("Age", "a")
+	data.Add("template", "foo")
+
+	body, contentType := formBody(data)
+
+	req, err := http.NewRequest("POST", "/hello/John", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	rr := httptest.NewRecorder()
+
+	h := &handlerWithTemplate{template: aTemplate}
+
+	router := httprouter.New()
+	router.POST("/hello/:Name", Validate(h, false))
+	router.ServeHTTP(rr, req)
+
+	// fmt.Println(rr.Body.String())
+
+	if status := rr.Code; status != http.StatusBadRequest {
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusBadRequest)
+		t.Error(rr.Body.String())
+	}
+}
+
+/*
 func TestFailTemplateValidation(t *testing.T) {
 
 	data := PostBody(struct {
@@ -112,21 +197,9 @@ func TestFailTemplateValidation(t *testing.T) {
 	}
 
 }
+*/
 
-func foo() (string, string, io.Reader, ValidationHandler) {
-
-	data := struct {
-		Username string
-		Template string
-	}{Username: "John", Template: "badt"}
-
-	handler := &MyHandler{
-		Template: template.Must(template.New("foo").Parse(`Result: {{.}}`)),
-	}
-
-	return "POST", "/name/:Name", PostBody(data), handler
-}
-
+/*
 func BenchmarkMiddleware(b *testing.B) {
 
 	rr := httptest.NewRecorder()
@@ -147,11 +220,27 @@ func BenchmarkMiddleware(b *testing.B) {
 		router.ServeHTTP(rr, req)
 	}
 }
+*/
 
+// func foo() (string, string, io.Reader, ValidationHandler) {
+//
+// 	data := struct {
+// 		Username string
+// 		Template string
+// 	}{Username: "John", Template: "badt"}
+//
+// 	handler := &MyHandler{
+// 		Template: template.Must(template.New("foo").Parse(`Result: {{.}}`)),
+// 	}
+//
+// 	return "POST", "/name/:Name", PostBody(data), handler
+// }
+
+/*
 func TestRecorder(t *testing.T) {
-	if true {
-		return
-	}
+	// if true {
+	// 	return
+	// }
 
 	type checkFunc func(*httptest.ResponseRecorder) error
 	check := func(fns ...checkFunc) []checkFunc { return fns }
@@ -199,7 +288,7 @@ func TestRecorder(t *testing.T) {
 			rec := httptest.NewRecorder()
 			method, path, reader, handler := tt.h()
 
-			req, err := http.NewRequest(method, "/", reader)
+			req, err := http.NewRequest(method, path, reader)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -268,5 +357,6 @@ func TestRecorder(t *testing.T) {
 				}
 			})
 		}
-	*/
+	*
 }
+*/
