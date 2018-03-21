@@ -69,10 +69,10 @@ type handlerWithTemplate struct {
 func (h handlerWithTemplate) ServeHTTP(w http.ResponseWriter, r *http.Request, validationError *ValidationError) (int, error) {
 	// fmt.Println("ServeHTTP called", validationError)
 	if validationError != nil {
-		return 0, validationError
+		return http.StatusBadRequest, validationError
 	}
 
-	return 0, nil
+	return http.StatusOK, nil
 }
 
 // JSON response
