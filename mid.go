@@ -14,7 +14,7 @@ import (
 )
 
 type ValidationHandler interface {
-	ServeHTTP(http.ResponseWriter, *http.Request, ValidationError) (int, error)
+	ServeHTTP(http.ResponseWriter, *http.Request, *ValidationError) (int, error)
 }
 
 // func cloneHandler(handler interface{}) interface{} {
@@ -52,7 +52,7 @@ func Validate(handler ValidationHandler, debug bool) httprouter.Handle { // http
 					handlerTemplate = t
 				}
 				// fmt.Printf("%s (%s) = %v\n", e.Type().Field(i).Name, field.Kind(), field.String())
-				break
+				// break
 			}
 		}
 	}
@@ -69,12 +69,7 @@ func Validate(handler ValidationHandler, debug bool) httprouter.Handle { // http
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("Caught Panic: %+v\n", r)
-
-				http.Error(w, http.StatusText(500), 500)
-				if true {
-					return
-				}
+				// log.Printf("Caught Panic: %+v\n", r)
 
 				if errorTemplate != nil {
 					_, err := RenderTemplateSafely(w, errorTemplate, http.StatusInternalServerError, r)
@@ -88,12 +83,6 @@ func Validate(handler ValidationHandler, debug bool) httprouter.Handle { // http
 				// if !debug {
 				// 	http.Error(w, http.StatusText(500), 500)
 				// 	return
-				// }
-
-				// if str, ok := err.(string); ok {
-				// 	http.Error(w, str, 500)
-				// } else if e, ok := err.(error); ok {
-				// 	http.Error(w, e.Error(), 500)
 				// }
 
 				var msg string
@@ -143,7 +132,7 @@ func Validate(handler ValidationHandler, debug bool) httprouter.Handle { // http
 		var ok bool
 		var status = http.StatusOK
 		var response interface{}
-		var vError ValidationError
+		var vError *ValidationError
 		err = ValidateStruct(h, r)
 
 		// fmt.Printf("After: %#v\n", h)
@@ -152,7 +141,7 @@ func Validate(handler ValidationHandler, debug bool) httprouter.Handle { // http
 		if err != nil {
 			status = http.StatusBadRequest
 
-			if vError, ok = err.(ValidationError); !ok {
+			if vError, ok = err.(*ValidationError); !ok {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -195,9 +184,14 @@ func Validate(handler ValidationHandler, debug bool) httprouter.Handle { // http
 		}
 
 		// log.Println(status, response, err)
-		_, err = Finalize(status, response, handlerTemplate, w)
+		if err != nil {
+			_, err = Finalize(status, response, errorTemplate, w)
+		} else {
+			_, err = Finalize(status, response, handlerTemplate, w)
+		}
 
 		if err != nil {
+			// fmt.Println(err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 

@@ -76,7 +76,7 @@ func ValidateStruct(s interface{}, r *http.Request) error {
 
 	if !isValid {
 		m := govalidator.ErrorsByField(err)
-		return ValidationError{
+		return &ValidationError{
 			Fields: m,
 		}
 	}

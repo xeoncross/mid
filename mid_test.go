@@ -3,7 +3,6 @@ package mid
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"html/template"
 	"io"
 	"log"
@@ -16,12 +15,23 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// Global "A" Template which simply dumps the template variables on render
-var aTemplate = template.Must(template.New("A").Parse(`A: {{printf "%#v" .}}`))
+// Global "dump" Template which simply dumps the template variables on render
+// var dumpTemplate = template.Must(template.New("dump").Parse(`dump: {{printf "%#v" . | noescape}}`))
+var dumpTemplate = newTemplate("dump", `dump: {{printf "%#v" . | noescape}}`)
+
+// Global "error" Template used for validation fails and other errors
+// var errorTemplate = template.Must(template.New("error").Parse(`error: {{printf "%#v" . | noescape}}`))
+var errorTemplate = newTemplate("error", `error: {{printf "%#v" . | noescape}}`)
 
 //
 // Helper Functions
 //
+
+// Wrapper so we can add a noescape helper to our templates
+func newTemplate(name, body string) *template.Template {
+	t := template.Must(template.New(name).Funcs(DefaultTemplateFunctions).Parse(body))
+	return t
+}
 
 // Keep the compiler from optimizing code away
 func use(a ...interface{}) {}
@@ -56,10 +66,105 @@ type handlerWithTemplate struct {
 	errorTemplate   *template.Template // Nil for some of the tests
 }
 
-func (h handlerWithTemplate) ServeHTTP(w http.ResponseWriter, r *http.Request, validationErrors ValidationError) (int, error) {
-	fmt.Println("ServeHTTP called")
-	h.validationError = validationErrors
+func (h handlerWithTemplate) ServeHTTP(w http.ResponseWriter, r *http.Request, validationError *ValidationError) (int, error) {
+	// fmt.Println("ServeHTTP called", validationError)
+	if validationError != nil {
+		return 0, validationError
+	}
+
 	return 0, nil
+}
+
+// JSON response
+type handlerWithoutTemplate struct {
+	Username string
+	Name     string
+	Age      int `valid:"required"`
+}
+
+func (h handlerWithoutTemplate) ServeHTTP(w http.ResponseWriter, r *http.Request, validationError *ValidationError) (int, error) {
+	// fmt.Println("ServeHTTP called", validationError)
+	w.Write([]byte("Hello"))
+	return 0, nil
+}
+
+type handlerWithException struct {
+	Username      string
+	Name          string
+	Age           int                `valid:"required"`
+	errorTemplate *template.Template // Nil for some of the tests
+}
+
+func (h handlerWithException) ServeHTTP(w http.ResponseWriter, r *http.Request, validationError *ValidationError) (int, error) {
+	panic("panic")
+}
+
+//
+// Tests
+//
+
+func TestHandlerPanic(t *testing.T) {
+
+	data := struct {
+		Username string
+		Age      int
+		template string
+	}{Username: "John", Age: 10, template: "foo"}
+
+	body, contentType := jsonBody(data)
+
+	req, err := http.NewRequest("POST", "/hello/John", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	rr := httptest.NewRecorder()
+
+	h := &handlerWithException{}
+
+	router := httprouter.New()
+	router.POST("/hello/:Name", Validate(h, false))
+	router.ServeHTTP(rr, req)
+
+	if status := rr.Code; status != http.StatusInternalServerError {
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusInternalServerError)
+		t.Error(rr.Body.String())
+	}
+
+}
+
+func TestHandlerPanicWithTemplate(t *testing.T) {
+
+	data := struct {
+		Username string
+		Age      int
+		template string
+	}{Username: "John", Age: 10, template: "foo"}
+
+	body, contentType := jsonBody(data)
+
+	req, err := http.NewRequest("POST", "/hello/John", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	rr := httptest.NewRecorder()
+
+	h := &handlerWithException{errorTemplate: errorTemplate}
+
+	router := httprouter.New()
+	router.POST("/hello/:Name", Validate(h, false))
+	router.ServeHTTP(rr, req)
+
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+		t.Error(rr.Body.String())
+	}
+
 }
 
 func TestPassTemplateValidationJSON(t *testing.T) {
@@ -81,7 +186,7 @@ func TestPassTemplateValidationJSON(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	h := &handlerWithTemplate{template: aTemplate}
+	h := &handlerWithTemplate{template: dumpTemplate}
 
 	router := httprouter.New()
 	router.POST("/hello/:Name", Validate(h, false))
@@ -98,6 +203,45 @@ func TestPassTemplateValidationJSON(t *testing.T) {
 	if status := rr.Code; status != http.StatusOK {
 		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
 		t.Error(rr.Body.String())
+	}
+
+}
+
+func TestFailTemplateValidationJSON(t *testing.T) {
+
+	data := struct {
+		Username string
+		Age      []string
+		template string
+	}{Username: "John", Age: []string{"foo"}, template: "foo"}
+
+	body, contentType := jsonBody(data)
+
+	req, err := http.NewRequest("POST", "/hello/John", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	rr := httptest.NewRecorder()
+
+	h := &handlerWithoutTemplate{}
+
+	router := httprouter.New()
+	router.POST("/hello/:Name", Validate(h, false))
+	router.ServeHTTP(rr, req)
+
+	got := rr.Body.String()
+	want := `{"Fields":{"Age":"non zero value required"}}` + "\n"
+
+	if status := rr.Code; status != http.StatusBadRequest {
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+		t.Error(rr.Body.String())
+	}
+
+	if got != want {
+		t.Errorf("handler returned wrong body:\n\tgot:  %s\n\twant: %s", got, want)
 	}
 
 }
@@ -119,7 +263,7 @@ func TestPassTemplateValidationForm(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	h := &handlerWithTemplate{template: aTemplate}
+	h := &handlerWithTemplate{template: dumpTemplate}
 
 	router := httprouter.New()
 	router.POST("/hello/:Name", Validate(h, false))
@@ -151,17 +295,25 @@ func TestFailTemplateValidationForm(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	h := &handlerWithTemplate{template: aTemplate}
+	h := &handlerWithTemplate{
+		template:      dumpTemplate,
+		errorTemplate: errorTemplate,
+	}
 
 	router := httprouter.New()
 	router.POST("/hello/:Name", Validate(h, false))
 	router.ServeHTTP(rr, req)
 
-	// fmt.Println(rr.Body.String())
+	want := `error: &mid.ValidationError{Fields:map[string]string{"Age":"non zero value required"}}`
+	got := rr.Body.String()
 
 	if status := rr.Code; status != http.StatusBadRequest {
 		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusBadRequest)
-		t.Error(rr.Body.String())
+		// t.Error(rr.Body.String())
+	}
+
+	if got != want {
+		t.Errorf("handler returned wrong body:\n\tgot:  %v\n\twant: %v", got, want)
 	}
 }
 
