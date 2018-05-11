@@ -18,7 +18,7 @@ type MidHandler struct {
 	Template         *template.Template
 }
 
-func (m MidHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, validationErrors mid.ValidationError) (int, error) {
+func (m MidHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, validationErrors *mid.ValidationError) (int, error) {
 
 	if &validationErrors != nil {
 		return 0, nil

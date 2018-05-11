@@ -29,8 +29,8 @@ func ValidateStruct(s interface{}, r *http.Request) error {
 	if r.Header.Get("Content-Type") == "application/json" {
 
 		err := json.NewDecoder(r.Body).Decode(s)
-		if err != nil {
 
+		if err != nil {
 			// We don't care about type errors
 			// the validator will handle those messages better below
 			switch err.(type) {
@@ -39,14 +39,14 @@ func ValidateStruct(s interface{}, r *http.Request) error {
 				// err = fmt.Errorf("JSON: Unexpected type '%s' for field '%s'", e.Value, e.Field)
 				// log.Printf("UnmarshalTypeError: Value[%s] Type[%v]\n", e.Value, e.Type)
 			case *json.InvalidUnmarshalError:
-			// 	log.Printf("InvalidUnmarshalError: Type[%v]\n", e.Type)
+				// log.Printf("InvalidUnmarshalError: Type[%v]\n", e.Type)
+			// unexpected EOF
 			default:
-				return err
-				// return errors.New("Invalid JSON Body")
-				// log.Println(err)
+				// We could just ignore all JSON errors like we do with gorilla/schema
+				// However, JSON errors should be rare and could make development
+				// a lot harder if something weird happens. Better alert the client.
+				return fmt.Errorf("Invalid JSON: %s", err.Error())
 			}
-
-			// return err
 		}
 
 	} else { // GET or application/x-www-form-urlencoded
@@ -61,13 +61,12 @@ func ValidateStruct(s interface{}, r *http.Request) error {
 		// B) Client is messing with the request fields
 		decoder.IgnoreUnknownKeys(true)
 
-		// fmt.Printf("%v -----<>----- %v\n", s, r.Form)
+		// Edge Case: https://github.com/gorilla/schema/blob/master/decoder.go#L203
+		// "schema: converter not found for..."
 
-		// Even if there is an error, we can still validate what we have
-		err := decoder.Decode(s, r.Form)
-		if err != nil {
-			return err
-		}
+		// gorilla/schema errors share application handler structure which is
+		// not safe for us, nor helpful to our clients
+		decoder.Decode(s, r.Form)
 	}
 
 	// 2. Validate the struct data rules
@@ -75,7 +74,7 @@ func ValidateStruct(s interface{}, r *http.Request) error {
 
 	if !isValid {
 		m := govalidator.ErrorsByField(err)
-		return ValidationError{
+		return &ValidationError{
 			Fields: m,
 		}
 	}

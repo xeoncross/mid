@@ -1,6 +1,7 @@
 package mid
 
 import (
+	"fmt"
 	"html/template"
 	"os"
 	"path/filepath"
@@ -8,8 +9,8 @@ import (
 )
 
 //
-// Middleware to allow http handlers to return values and have them injected
-// into templates automatically
+// Helpers for loading templates
+// Not used directly by mid
 //
 
 // FindTemplates in path recursively
@@ -38,18 +39,27 @@ func AddTemplates(Templates *template.Template, path string, extension string) (
 }
 
 // Templates is global until we update Render()
-var Templates map[string]*template.Template
+// var Templates map[string]*template.Template
+
+// Default template functions
+var DefaultTemplateFunctions = template.FuncMap{
+	// Allow unsafe injection into HTML
+	"noescape": func(a ...interface{}) template.HTML {
+		return template.HTML(fmt.Sprint(a...))
+	},
+	"title": strings.Title,
+}
 
 // LoadAllTemplates segregated by template name
 // First item is the pages, the next and following are the layouts/includes
 // LoadAllTemplates(".html", "pages/", "layouts/", "partials/")
-func LoadAllTemplates(extension string, paths ...string) (err error) {
+func LoadAllTemplates(extension string, paths ...string) (Templates map[string]*template.Template, err error) {
 
 	// Create new template object each run to allow refreshing
 	Templates = make(map[string]*template.Template)
 
 	var pagesPath string
-	pagesPath, paths = strings.Trim(paths[0], "/."), paths[1:]
+	pagesPath, paths = strings.TrimRight(paths[0], "/"), paths[1:]
 
 	var pages []string
 	pages, err = FindTemplates(pagesPath, extension)
@@ -61,7 +71,7 @@ func LoadAllTemplates(extension string, paths ...string) (err error) {
 		basename := filepath.Base(pagePath)
 
 		// Load this template
-		Templates[basename] = template.Must(template.ParseFiles(pagePath))
+		Templates[basename] = template.Must(template.New(basename).Funcs(DefaultTemplateFunctions).ParseFiles(pagePath))
 
 		// Each add all the includes, partials, and layouts
 		if len(paths) > 0 {
