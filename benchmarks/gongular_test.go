@@ -23,9 +23,7 @@ type GongularHandler struct {
 }
 
 func (m *GongularHandler) Handle(c *gongular.Context) error {
-	// fmt.Println("multiparam")
 	c.SetBody(m)
-	// c.SetBody(fmt.Sprintf("%s:%d", m.Param.UserID, m.Param.Page))
 	return nil
 }
 

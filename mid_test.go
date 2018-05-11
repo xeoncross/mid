@@ -27,7 +27,7 @@ func PostBody(data interface{}) io.Reader {
 	return bytes.NewReader(b)
 }
 
-type MyHandler struct {
+type MidHandler struct {
 	Username         string
 	Name             string
 	Age              int `valid:"required"`
@@ -35,17 +35,13 @@ type MyHandler struct {
 	Template         *template.Template
 }
 
-var s string
-
-func (m MyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, validationErrors ValidationError) (int, error) {
+func (m MidHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, validationErrors ValidationError) (int, error) {
 
 	if &validationErrors != nil {
 		return 0, nil
 	}
 
 	m.validationErrors = validationErrors
-	s = fmt.Sprintf("Inside: %#v\n", m)
-	// panic("inside")
 	return http.StatusOK, nil
 }
 
@@ -67,7 +63,7 @@ func TestPassTemplateValidation(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	h := &MyHandler{Template: template.Must(template.New("foo").Parse(`Result: {{.}}`))}
+	h := &MidHandler{Template: template.Must(template.New("foo").Parse(`Result: {{.}}`))}
 
 	router := httprouter.New()
 	router.POST("/hello/:Name", Validate(h, false))
@@ -99,7 +95,7 @@ func TestFailTemplateValidation(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	h := &MyHandler{Template: template.Must(template.New("foo").Parse(`Result: {{.}}`))}
+	h := &MidHandler{Template: template.Must(template.New("foo").Parse(`Result: {{.}}`))}
 
 	router := httprouter.New()
 	router.POST("/hello/:Name", Validate(h, false))
@@ -121,7 +117,7 @@ func foo() (string, string, io.Reader, ValidationHandler) {
 		Template string
 	}{Username: "John", Template: "badt"}
 
-	handler := &MyHandler{
+	handler := &MidHandler{
 		Template: template.Must(template.New("foo").Parse(`Result: {{.}}`)),
 	}
 
@@ -133,7 +129,7 @@ func foo() (string, string, io.Reader, ValidationHandler) {
 //
 // 	rr := httptest.NewRecorder()
 // 	router := httprouter.New()
-// 	router.POST("/hello/:Name", Validate(&MyHandler{}, false))
+// 	router.POST("/hello/:Name", Validate(&MidHandler{}, false))
 //
 // 	data := struct {
 // 		Username string

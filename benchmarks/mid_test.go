@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"html/template"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +10,7 @@ import (
 	"github.com/xeoncross/mid"
 )
 
-type MyHandler struct {
+type MidHandler struct {
 	Username         string
 	Name             string
 	Age              int `valid:"required"`
@@ -19,17 +18,12 @@ type MyHandler struct {
 	Template         *template.Template
 }
 
-var s string
-
-func (m MyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, validationErrors mid.ValidationError) (int, error) {
+func (m MidHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, validationErrors mid.ValidationError) (int, error) {
 
 	if &validationErrors != nil {
 		return 0, nil
 	}
 
-	m.validationErrors = validationErrors
-	s = fmt.Sprintf("Inside: %#v\n", m)
-	// panic("inside")
 	return http.StatusOK, nil
 }
 
@@ -37,7 +31,7 @@ func BenchmarkMid(b *testing.B) {
 
 	rr := httptest.NewRecorder()
 	router := httprouter.New()
-	router.POST("/hello/:Name", mid.Validate(&MyHandler{}, false))
+	router.POST("/hello/:Name", mid.Validate(&MidHandler{}, false))
 
 	data := struct {
 		Username string
