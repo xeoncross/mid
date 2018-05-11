@@ -7,7 +7,7 @@ import (
 	"log"
 )
 
-func Use(a ...interface{}) {}
+func use(a ...interface{}) {}
 
 func PostBody(data interface{}) io.Reader {
 

@@ -33,7 +33,7 @@ func (m MyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, validationE
 	return http.StatusOK, nil
 }
 
-func BenchmarkMiddleware(b *testing.B) {
+func BenchmarkMid(b *testing.B) {
 
 	rr := httptest.NewRecorder()
 	router := httprouter.New()

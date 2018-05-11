@@ -11,7 +11,23 @@ import (
 	"github.com/mustafaakin/gongular"
 )
 
-func use(...interface{}) {}
+// Test Handler
+type GongularHandler struct {
+	Param struct {
+		Name string
+	}
+	Body struct {
+		Username string
+		Age      int `valid:"int,required"`
+	}
+}
+
+func (m *GongularHandler) Handle(c *gongular.Context) error {
+	// fmt.Println("multiparam")
+	c.SetBody(m)
+	// c.SetBody(fmt.Sprintf("%s:%d", m.Param.UserID, m.Param.Page))
+	return nil
+}
 
 /*
 var defaultErrorHandler = func(err error, c *gongular.Context) {
@@ -86,27 +102,10 @@ func post(e *gongular.Engine, path string, reader io.Reader) (*httptest.Response
 	// req.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
 }
 
-type multiParam struct {
-	Param struct {
-		Name string
-	}
-	Body struct {
-		Username string
-		Age      int `valid:"int,required"`
-	}
-}
-
-func (m *multiParam) Handle(c *gongular.Context) error {
-	// fmt.Println("multiparam")
-	c.SetBody(m)
-	// c.SetBody(fmt.Sprintf("%s:%d", m.Param.UserID, m.Param.Page))
-	return nil
-}
-
 func TestMultiParam(t *testing.T) {
 	e := newEngineTest()
-	// e.GetRouter().GET("/user/:UserID/page/:Page", &multiParam{})
-	e.GetRouter().POST("/hello/:Name", &multiParam{})
+	// e.GetRouter().GET("/user/:UserID/page/:Page", &GongularHandler{})
+	e.GetRouter().POST("/hello/:Name", &GongularHandler{})
 
 	// resp, content := get(e, "/user/ahmet/page/5")
 
@@ -120,95 +119,17 @@ func TestMultiParam(t *testing.T) {
 	// assert.Equal(t, content, "\"ahmet:5\"")
 }
 
-func BenchmarkProcessing(b *testing.B) {
+func BenchmarkGongular(b *testing.B) {
 	e := newEngineTest()
 
-	// e.GetRouter().GET("/user/:UserID/page/:Page", &multiParam{})
-	e.GetRouter().POST("/hello/:Name", &multiParam{})
+	// e.GetRouter().GET("/user/:UserID/page/:Page", &GongularHandler{})
+	e.GetRouter().POST("/hello/:Name", &GongularHandler{})
 
 	data := struct{ Username string }{Username: "John"}
 	postBody := PostBody(data)
+
 	for n := 0; n < b.N; n++ {
-
-		// resp, content := get(e, "/user/ahmet/page/5")
-
-		// data := url.Values{"Username": {fmt.Sprintf("Faker-%d", n)}}
 		resp, content := post(e, "/hello/ahmet", postBody)
 		use(resp, content)
 	}
 }
-
-/*
-// The middle ware that will fail if you supply 5 as a user ID
-type middlewareFailIfUserId5 struct {
-	// Param struct {
-	// 	UserID int
-	// }
-}
-
-func (m *middlewareFailIfUserId5) Handle(c *gongular.Context) error {
-	fmt.Println("middleware")
-	// if m.Param.UserID == 5 {
-	// 	c.Status(http.StatusTeapot)
-	// 	c.SetBody("Sorry")
-	// 	c.StopChain()
-	// }
-	return nil
-}
-
-func TestMiddlewareMultiParam(t *testing.T) {
-	e := newEngineTest()
-
-	g := e.GetRouter().Group("/user/:UserID/page", &middlewareFailIfUserId5{})
-
-	g.GET("/:Page", &multiParam{})
-
-	resp, content := get(e, "/user/ahmet/page/5")
-	assert.Equal(t, http.StatusOK, resp.Code)
-	assert.Equal(t, content, "\"ahmet:5\"")
-}
-*/
-
-/*
-func BenchmarkGongular(b *testing.B) {
-	handlerElem := reflect.TypeOf(handler).Elem()
-	obj := reflect.New(hc.tip)
-	objElem := obj.Elem()
-
-	err := hc.parseFields(c, objElem, injector)
-	if err != nil {
-		return err
-	}
-
-}
-
-
-func (hc *handlerContext) parseFields(c *Context, objElem reflect.Value, injector *injector) error {
-	if hc.param {
-		err := c.parseParams(objElem)
-		if err != nil {
-			return err
-		}
-	}
-}
-
-func (c *Context) parseParams(obj reflect.Value) error {
-	param := obj.FieldByName(FieldParameter)
-	paramType := param.Type()
-
-	numFields := paramType.NumField()
-	for i := 0; i < numFields; i++ {
-		field := paramType.Field(i)
-
-		s := c.Params().ByName(field.Name)
-		val := param.Field(i)
-		err := parseSimpleParam(s, PlaceParameter, field, &val)
-		if err != nil {
-			return err
-		}
-	}
-
-	return validateStruct(param, PlaceParameter)
-}
-
-*/
