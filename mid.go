@@ -120,9 +120,8 @@ func Validate(handler ValidationHandler, debug bool) httprouter.Handle { // http
 		// The error had to do with parsing the request body or content length
 		if err != nil {
 			if vError, ok = err.(*ValidationError); !ok {
-				panic(err)
-				// http.Error(w, err.Error(), http.StatusInternalServerError)
-				// return
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
 			}
 		}
 
@@ -160,7 +159,8 @@ func Validate(handler ValidationHandler, debug bool) httprouter.Handle { // http
 			size, err = Finalize(status, response, handlerTemplate, w)
 		}
 
-		log.Println(r.Method, r.RequestURI, status, size)
+		_ = size
+		// log.Println(r.Method, r.RequestURI, status, size)
 
 		if err != nil {
 			panic(err)
