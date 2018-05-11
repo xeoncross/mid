@@ -16,6 +16,7 @@ import (
 
 func Use(a ...interface{}) {}
 
+//
 func PostBody(data interface{}) io.Reader {
 
 	b, err := json.Marshal(data)
@@ -127,26 +128,27 @@ func foo() (string, string, io.Reader, ValidationHandler) {
 	return "POST", "/name/:Name", PostBody(data), handler
 }
 
-func BenchmarkMiddleware(b *testing.B) {
-
-	rr := httptest.NewRecorder()
-	router := httprouter.New()
-	router.POST("/hello/:Name", Validate(&MyHandler{}, false))
-
-	data := struct {
-		Username string
-		Template string
-	}{Username: "John", Template: "badt"}
-
-	postBody := PostBody(data)
-	for n := 0; n < b.N; n++ {
-		req, err := http.NewRequest("POST", "/hello/John", postBody)
-		if err != nil {
-			b.Fatal(err)
-		}
-		router.ServeHTTP(rr, req)
-	}
-}
+//
+// func BenchmarkMiddleware(b *testing.B) {
+//
+// 	rr := httptest.NewRecorder()
+// 	router := httprouter.New()
+// 	router.POST("/hello/:Name", Validate(&MyHandler{}, false))
+//
+// 	data := struct {
+// 		Username string
+// 		Template string
+// 	}{Username: "John", Template: "badt"}
+//
+// 	postBody := PostBody(data)
+// 	for n := 0; n < b.N; n++ {
+// 		req, err := http.NewRequest("POST", "/hello/John", postBody)
+// 		if err != nil {
+// 			b.Fatal(err)
+// 		}
+// 		router.ServeHTTP(rr, req)
+// 	}
+// }
 
 func TestRecorder(t *testing.T) {
 	if true {
