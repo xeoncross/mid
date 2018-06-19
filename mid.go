@@ -35,11 +35,6 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 	var handlerTemplate *template.Template
 	var errorTemplate *template.Template
 
-	// Default to showing errors in the console / log file ?
-	// if logger == nil {
-	// 	logger = log.New(os.Stderr, "", log.LstdFlags)
-	// }
-
 	// If this Handler has an HTML template defined then we will assume it
 	// is NOT a JSON endpoint and let them deal with validation errors
 	// https://golang.org/pkg/reflect/#Indirect works on pointers or values
@@ -61,6 +56,37 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 			}
 		}
 	}
+
+	// // Send an error to the user's client
+	// renderError := func(w http.ResponseWriter, err error) {
+	// 	// https://github.com/goadesign/goa/blob/master/middleware/recover.go
+	// 	const size = 64 << 10 // 64KB
+	// 	buf := make([]byte, size)
+	// 	buf = buf[:runtime.Stack(buf, false)]
+	// 	lines := strings.Split(string(buf), "\n")
+	// 	stack := lines[6:]
+	//
+	// 	data := map[string]interface{}{
+	// 		"Error":  err.Error(),
+	// 		"Trace":  strings.Join(stack, "\n"),
+	// 		"Params": ps,
+	// 	}
+	//
+	// 	// If the handler has an error template defined then we defer to them
+	// 	if errorTemplate != nil {
+	// 		_, err := RenderTemplateSafely(w, errorTemplate, http.StatusInternalServerError, data)
+	// 		if err == nil {
+	// 			return
+	// 		}
+	// 	}
+	//
+	// 	if !displayErrors {
+	// 		http.Error(w, http.StatusText(500), http.StatusInternalServerError)
+	// 		return
+	// 	}
+	//
+	// 	http.Error(w, err.Error(), http.StatusInternalServerError)
+	// }
 
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		defer func() {
@@ -130,7 +156,7 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 
 		var ok bool
 		var status = http.StatusOK
-		var response interface{}
+		// var response interface{}
 		var vError *ValidationError
 		err = ValidateStruct(h, r)
 
@@ -145,7 +171,7 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 		// Validation error, and we don't have a template - return JSON
 		if err != nil && handlerTemplate == nil {
 			status = http.StatusBadRequest
-			response = err
+			// response = err
 		} else {
 			// Validation errors or not, let the handler decide what is next
 			values := reflect.ValueOf(h).MethodByName("ServeHTTP").Call([]reflect.Value{
@@ -162,26 +188,31 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 				err = values[1].Interface().(error)
 			}
 
-			if err != nil {
-				response = err
-			} else {
-				response = h
-			}
+			// if err != nil && err != vError {
+			// 	response = err
+			// } else {
+			// 	response = h
+			// }
 		}
 
+		log.Printf("Response: %v", err)
+
 		var size int
-		if err != nil {
-			size, err = Finalize(status, response, errorTemplate, w)
+
+		// Handler returned error
+		if err != nil && err != vError {
+			size, err = Finalize(status, err, errorTemplate, w)
+
+			// Validation returned error
+		} else if err != nil {
+			size, err = Finalize(status, err, handlerTemplate, w)
+			// Handler and Validation returned no errors
 		} else {
-			size, err = Finalize(status, response, handlerTemplate, w)
+			size, err = Finalize(status, h, handlerTemplate, w)
 		}
 
 		_ = size
 		// logger.Println(r.Method, r.RequestURI, status, size)
-
-		if err != nil {
-			panic(err)
-		}
 	}
 }
 

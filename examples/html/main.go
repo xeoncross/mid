@@ -29,8 +29,8 @@ func (h HTMLHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, validatio
 func main() {
 
 	MyHandlerInstance := &HTMLHandler{
-		template:      template.Must(template.New("foo").Parse(`Result: {{.}}`)),
-		errorTemplate: mid.ErrorTemplate,
+		template: template.Must(template.New("foo").Parse(`Result: {{.}}`)),
+		// errorTemplate: mid.ErrorTemplate,
 	}
 
 	router := httprouter.New()
