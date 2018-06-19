@@ -17,12 +17,28 @@ type ValidationHandler interface {
 	ServeHTTP(http.ResponseWriter, *http.Request, *ValidationError) (int, error)
 }
 
+// func NewValidator(debug bool, logger *log.Logger) func(ValidationHandler) httprouter.Handle {
+// 	// Default to showing errors in the console / log file
+// 	if logger == nil {
+// 		logger = log.New(os.Stderr, "", log.LstdFlags)
+// 	}
+//
+// 	return func(handler ValidationHandler) httprouter.Handle {
+// 		return Validate(handler, debug, logger)
+// 	}
+// }
+
 // Validate a http.Handler providing JSON or HTML responses
-func Validate(handler ValidationHandler, debug bool) httprouter.Handle { // http.Handler {
+func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger) httprouter.Handle {
 
 	// Load this handlers template (if any)
 	var handlerTemplate *template.Template
 	var errorTemplate *template.Template
+
+	// Default to showing errors in the console / log file ?
+	// if logger == nil {
+	// 	logger = log.New(os.Stderr, "", log.LstdFlags)
+	// }
 
 	// If this Handler has an HTML template defined then we will assume it
 	// is NOT a JSON endpoint and let them deal with validation errors
@@ -31,44 +47,24 @@ func Validate(handler ValidationHandler, debug bool) httprouter.Handle { // http
 	for i := 0; i < e.NumField(); i++ {
 		field := e.Field(i)
 
-		// v1: Only look for templates in public struct properties
-		// fmt.Printf("%s (%s) = %v\n", e.Type().Field(i).Name, field.Kind(), field.String())
 		if field.IsValid() && field.Kind() == reflect.Ptr && !field.IsNil() {
 
-			// v2: only look for templates in private struct properties
 			// https://stackoverflow.com/questions/42664837/access-unexported-fields-in-golang-reflect
 			fieldValue := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
 
 			if t, ok := fieldValue.Interface().(*template.Template); ok {
-				if t.Name() == "error" || t.Name() == "error.html" {
+				if strings.Contains(t.Name(), "error") {
 					errorTemplate = t
 				} else {
 					handlerTemplate = t
 				}
-				// fmt.Printf("%s (%s) = %v\n", e.Type().Field(i).Name, field.Kind(), field.String())
 			}
 		}
 	}
 
-	// return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("Caught Panic: %+v\n", r)
-
-				if errorTemplate != nil {
-					_, err := RenderTemplateSafely(w, errorTemplate, http.StatusInternalServerError, r)
-					if err != nil {
-						log.Println(err)
-						http.Error(w, http.StatusText(500), http.StatusInternalServerError)
-					}
-					return
-				}
-
-				// if !debug {
-				// 	http.Error(w, http.StatusText(500), 500)
-				// 	return
-				// }
 
 				var msg string
 				switch x := r.(type) {
@@ -86,10 +82,34 @@ func Validate(handler ValidationHandler, debug bool) httprouter.Handle { // http
 				buf = buf[:runtime.Stack(buf, false)]
 				lines := strings.Split(string(buf), "\n")
 				stack := lines[5:]
-				err := fmt.Sprintf("%s\n%s", msg, strings.Join(stack, "\n"))
-				http.Error(w, err, http.StatusInternalServerError)
-				return
+				errorWithTrace := fmt.Sprintf("%s\n%s", msg, strings.Join(stack, "\n"))
 
+				if logger != nil {
+					logger.Println(errorWithTrace)
+				}
+
+				data := map[string]interface{}{
+					"Error":  msg,
+					"Trace":  strings.Join(stack, "\n"),
+					"Params": ps,
+				}
+
+				// If the handler has an error template defined then we defer to them
+				if errorTemplate != nil {
+					_, err := RenderTemplateSafely(w, errorTemplate, http.StatusInternalServerError, data)
+					if err == nil {
+						return
+					}
+				}
+
+				fmt.Println("fallback here...")
+
+				if !displayErrors {
+					http.Error(w, http.StatusText(500), http.StatusInternalServerError)
+					return
+				}
+
+				http.Error(w, errorWithTrace, http.StatusInternalServerError)
 			}
 		}()
 
@@ -101,9 +121,6 @@ func Validate(handler ValidationHandler, debug bool) httprouter.Handle { // http
 		err = ParseInput(w, r, 1024*1024, 1024*1024)
 		if err != nil {
 			panic(err)
-			// log.Println(err)
-			// http.Error(w, err.Error(), http.StatusInternalServerError)
-			// return
 		}
 
 		// URL params trump everything, so we parse them after user input
@@ -160,16 +177,11 @@ func Validate(handler ValidationHandler, debug bool) httprouter.Handle { // http
 		}
 
 		_ = size
-		// log.Println(r.Method, r.RequestURI, status, size)
+		// logger.Println(r.Method, r.RequestURI, status, size)
 
 		if err != nil {
 			panic(err)
-			// fmt.Println(err)
-			// http.Error(w, err.Error(), http.StatusInternalServerError)
-			// status = http.StatusInternalServerError
 		}
-
-		// log.Println(r.Method, r.RequestURI, status, size)
 	}
 }
 

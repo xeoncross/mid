@@ -96,7 +96,7 @@ type handlerWithException struct {
 }
 
 func (h handlerWithException) ServeHTTP(w http.ResponseWriter, r *http.Request, validationError *ValidationError) (int, error) {
-	panic("panic")
+	panic("handlerWithException->panic")
 }
 
 //
@@ -125,7 +125,7 @@ func TestHandlerPanic(t *testing.T) {
 	h := &handlerWithException{}
 
 	router := httprouter.New()
-	router.POST("/hello/:Name", Validate(h, false))
+	router.POST("/hello/:Name", Validate(h, false, nil))
 	router.ServeHTTP(rr, req)
 
 	if status := rr.Code; status != http.StatusInternalServerError {
@@ -157,11 +157,11 @@ func TestHandlerPanicWithTemplate(t *testing.T) {
 	h := &handlerWithException{errorTemplate: errorTemplate}
 
 	router := httprouter.New()
-	router.POST("/hello/:Name", Validate(h, false))
+	router.POST("/hello/:Name", Validate(h, false, nil))
 	router.ServeHTTP(rr, req)
 
-	if status := rr.Code; status != http.StatusOK {
-		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+	if status := rr.Code; status != http.StatusInternalServerError {
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusInternalServerError)
 		t.Error(rr.Body.String())
 	}
 
@@ -189,7 +189,7 @@ func TestPassTemplateValidationJSON(t *testing.T) {
 	h := &handlerWithTemplate{template: dumpTemplate}
 
 	router := httprouter.New()
-	router.POST("/hello/:Name", Validate(h, false))
+	router.POST("/hello/:Name", Validate(h, false, nil))
 	router.ServeHTTP(rr, req)
 
 	// var tpl bytes.Buffer
@@ -229,7 +229,7 @@ func TestFailTemplateValidationJSON(t *testing.T) {
 	h := &handlerWithoutTemplate{}
 
 	router := httprouter.New()
-	router.POST("/hello/:Name", Validate(h, false))
+	router.POST("/hello/:Name", Validate(h, false, nil))
 	router.ServeHTTP(rr, req)
 
 	got := rr.Body.String()
@@ -266,7 +266,7 @@ func TestPassTemplateValidationForm(t *testing.T) {
 	h := &handlerWithTemplate{template: dumpTemplate}
 
 	router := httprouter.New()
-	router.POST("/hello/:Name", Validate(h, false))
+	router.POST("/hello/:Name", Validate(h, false, nil))
 	router.ServeHTTP(rr, req)
 
 	// fmt.Println(rr.Body.String())
@@ -301,7 +301,7 @@ func TestFailTemplateValidationForm(t *testing.T) {
 	}
 
 	router := httprouter.New()
-	router.POST("/hello/:Name", Validate(h, false))
+	router.POST("/hello/:Name", Validate(h, false, nil))
 	router.ServeHTTP(rr, req)
 
 	want := `error: &mid.ValidationError{Fields:map[string]string{"Age":"non zero value required"}}`

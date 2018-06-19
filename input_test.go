@@ -38,7 +38,7 @@ func TestInvalidJSONBody(t *testing.T) {
 	h := &handlerWithException{}
 
 	router := httprouter.New()
-	router.POST("/hello/:Name", Validate(h, false))
+	router.POST("/hello/:Name", Validate(h, false, nil))
 	router.ServeHTTP(rr, req)
 
 	fmt.Println(rr.Body.String())

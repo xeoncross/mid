@@ -45,18 +45,20 @@ func Finalize(status int, body interface{}, t *template.Template, w http.Respons
 	// Body is a html/template
 	// if v, ok := body.(*template.Template); ok {
 	if t != nil {
-		w.WriteHeader(status)
 		return RenderTemplateSafely(w, t, status, body)
 	}
 
-	// fmt.Println("JSON")
+	return RenderJSONSafely(w, status, body)
+}
 
+// RenderJSONSafely by using a buffer to prevent partial sends
+func RenderJSONSafely(w http.ResponseWriter, status int, data interface{}) (int, error) {
 	// Body is JSON
 	buf := bufpool.Get()
 	defer bufpool.Put(buf)
 
 	e := json.NewEncoder(buf)
-	err := e.Encode(body)
+	err := e.Encode(data)
 	if err != nil {
 		return 0, err
 	}
@@ -79,6 +81,7 @@ func RenderTemplateSafely(w http.ResponseWriter, t *template.Template, status in
 		return 0, err
 	}
 
+	w.WriteHeader(status)
 	// Set the header and write the buffer to the http.ResponseWriter
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	buf.WriteTo(w)

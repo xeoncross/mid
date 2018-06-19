@@ -8,6 +8,26 @@ import (
 	"strings"
 )
 
+const errorTemplateHTML = `
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>{{.Error}}</title>
+		<style type="text/css">
+			body { margin: 0 auto; max-width: 600px; }
+			pre { background: #eee; padding: 1em; margin: 1em 0; }
+		</pre>
+	</head>
+	<body>
+		<h2>Error: {{.Error}}</h2>
+		<pre>{{.Trace}}</pre>
+	</body>
+</html>`
+
+// Template for displaying errors
+var ErrorTemplate = template.Must(template.New("error").Parse(errorTemplateHTML))
+
 //
 // Helpers for loading templates
 // Not used directly by mid
