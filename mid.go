@@ -14,7 +14,7 @@ import (
 )
 
 type ValidationHandler interface {
-	ServeHTTP(http.ResponseWriter, *http.Request, *ValidationError) (int, error)
+	ServeHTTP(http.ResponseWriter, *http.Request, *ValidationErrors) error
 }
 
 // func NewValidator(debug bool, logger *log.Logger) func(ValidationHandler) httprouter.Handle {
@@ -34,6 +34,7 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 	// Load this handlers template (if any)
 	var handlerTemplate *template.Template
 	var errorTemplate *template.Template
+	var validationErrorsField string
 
 	// If this Handler has an HTML template defined then we will assume it
 	// is NOT a JSON endpoint and let them deal with validation errors
@@ -41,6 +42,8 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 	e := reflect.Indirect(reflect.ValueOf(handler))
 	for i := 0; i < e.NumField(); i++ {
 		field := e.Field(i)
+
+		// fmt.Printf("%+v\n", field.Type().Name())
 
 		if field.IsValid() && field.Kind() == reflect.Ptr && !field.IsNil() {
 
@@ -52,6 +55,13 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 					errorTemplate = t
 				} else {
 					handlerTemplate = t
+				}
+			} else if _, ok := fieldValue.Interface().(*ValidationErrors); ok {
+
+				// If obj field value is not settable an error is thrown
+				if fieldValue.CanSet() {
+					fmt.Printf("ValidationErrors field found on %s -> %#v\n", field.Type().Name(), handler)
+					validationErrorsField = field.Type().Name()
 				}
 			}
 		}
@@ -155,60 +165,63 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 		}
 
 		var ok bool
-		var status = http.StatusOK
+		// var status = http.StatusOK
 		// var response interface{}
-		var vError *ValidationError
+		var vError *ValidationErrors
 		err = ValidateStruct(h, r)
 
 		// The error had to do with parsing the request body or content length
 		if err != nil {
-			if vError, ok = err.(*ValidationError); !ok {
+			if vError, ok = err.(*ValidationErrors); !ok {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
+			} else if validationErrorsField != "" {
+
+				// Fetch the field reflect.Value
+				structValue := reflect.ValueOf(h).Elem()
+				structFieldValue := structValue.FieldByName(validationErrorsField)
+
+				val := reflect.ValueOf(vError)
+				structFieldValue.Set(val)
 			}
 		}
 
+		// fmt.Printf("H: %#v\n", h)
+		//
+		// func(h ValidationHandler) {
+		// 	h.ValidationErrors = vError
+		// 	// h[validationErrorsField] = vError
+		// }(h.(ValidationHandler))
+
 		// Validation error, and we don't have a template - return JSON
 		if err != nil && handlerTemplate == nil {
-			status = http.StatusBadRequest
-			// response = err
+			// status = http.StatusBadRequest
 		} else {
 			// Validation errors or not, let the handler decide what is next
-			values := reflect.ValueOf(h).MethodByName("ServeHTTP").Call([]reflect.Value{
+			response := reflect.ValueOf(h).MethodByName("ServeHTTP").Call([]reflect.Value{
 				reflect.ValueOf(w),
 				reflect.ValueOf(r),
 				reflect.ValueOf(vError),
 			})
 
-			if values[0].Int() != 0 {
-				status = int(values[0].Int())
+			if !response[0].IsNil() {
+				err = response[0].Interface().(error)
 			}
-
-			if !values[1].IsNil() {
-				err = values[1].Interface().(error)
-			}
-
-			// if err != nil && err != vError {
-			// 	response = err
-			// } else {
-			// 	response = h
-			// }
 		}
 
-		log.Printf("Response: %v", err)
-
+		// log.Printf("Response: %v", err)
 		var size int
 
 		// Handler returned error
 		if err != nil && err != vError {
-			size, err = Finalize(status, err, errorTemplate, w)
+			size, err = Finalize(http.StatusBadRequest, err, errorTemplate, w)
 
 			// Validation returned error
 		} else if err != nil {
-			size, err = Finalize(status, err, handlerTemplate, w)
+			size, err = Finalize(http.StatusBadRequest, err, handlerTemplate, w)
 			// Handler and Validation returned no errors
 		} else {
-			size, err = Finalize(status, h, handlerTemplate, w)
+			size, err = Finalize(http.StatusOK, h, handlerTemplate, w)
 		}
 
 		_ = size

@@ -18,6 +18,33 @@ Most middleware libraries solve easy problems like error recovery and logging. I
   - https://github.com/gorilla/mux
   - https://github.com/julienschmidt/httprouter (TODO)
 
+## Thoughts
+
+Adding template support to gongular seems to be a flop unless we assume:
+
+1. a non-javascript site
+2. only apply validation if a POST/PUT/DELETE request.
+3. Avoid auto-loading templates
+
+The original idea of a single handler that returns JSON or HTML depending on if
+a `template.Template` is set doesn't make much sense.
+
+- Endpoints should be JSON only not rendering pages (Modern web apps).
+- HTML pages that don't use AJAX should not send back AJAX.
+
+Originally I was going to have any request that does not contain all required data
+bypass the handler and return the errors.
+
+For HTML pages this meant skipping straight to loading the template. However,
+the template often relies on data provided by the handler, so it is not very
+useful to skip that part.
+
+Consider a form that needs to be rendered on first load + some select lists or
+other data provided by the handler. Validation only applies on a subsequent POST
+request, but we would still need the extra data provided by the handler.
+
+
+
 ## Related Projects
 
 These projects are related in the sense of returning of structs/errors/maps directly from HTTP handlers and providing automatic input validation.

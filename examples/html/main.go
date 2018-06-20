@@ -14,16 +14,15 @@ import (
 type HTMLHandler struct {
 	Name             string
 	Age              int `valid:"required"`
-	validationErrors *mid.ValidationError
+	ValidationErrors *mid.ValidationErrors
 	template         *template.Template
 	errorTemplate    *template.Template
 }
 
 // Then you define the handler
-func (h HTMLHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, validationError *mid.ValidationError) (int, error) {
-	h.validationErrors = validationError
+func (h HTMLHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, ValidationErrors *mid.ValidationErrors) error {
 	fmt.Printf("Inside: %#v\n", h)
-	return http.StatusOK, nil
+	return nil
 }
 
 func main() {

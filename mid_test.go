@@ -61,18 +61,13 @@ type handlerWithTemplate struct {
 	Name     string
 	Age      int `valid:"required"`
 
-	validationError ValidationError
-	template        *template.Template
-	errorTemplate   *template.Template // Nil for some of the tests
+	ValidationErrors ValidationErrors
+	template         *template.Template
+	errorTemplate    *template.Template // Nil for some of the tests
 }
 
-func (h handlerWithTemplate) ServeHTTP(w http.ResponseWriter, r *http.Request, validationError *ValidationError) (int, error) {
-	// fmt.Println("ServeHTTP called", validationError)
-	if validationError != nil {
-		return http.StatusBadRequest, validationError
-	}
-
-	return http.StatusOK, nil
+func (h handlerWithTemplate) ServeHTTP(w http.ResponseWriter, r *http.Request, ValidationErrors *ValidationErrors) error {
+	return nil
 }
 
 // JSON response
@@ -82,10 +77,10 @@ type handlerWithoutTemplate struct {
 	Age      int `valid:"required"`
 }
 
-func (h handlerWithoutTemplate) ServeHTTP(w http.ResponseWriter, r *http.Request, validationError *ValidationError) (int, error) {
-	// fmt.Println("ServeHTTP called", validationError)
+func (h handlerWithoutTemplate) ServeHTTP(w http.ResponseWriter, r *http.Request, ValidationErrors *ValidationErrors) error {
+	// fmt.Println("ServeHTTP called", ValidationErrors)
 	w.Write([]byte("Hello"))
-	return 0, nil
+	return nil
 }
 
 type handlerWithException struct {
@@ -95,7 +90,7 @@ type handlerWithException struct {
 	errorTemplate *template.Template // Nil for some of the tests
 }
 
-func (h handlerWithException) ServeHTTP(w http.ResponseWriter, r *http.Request, validationError *ValidationError) (int, error) {
+func (h handlerWithException) ServeHTTP(w http.ResponseWriter, r *http.Request, ValidationErrors *ValidationErrors) error {
 	panic("handlerWithException->panic")
 }
 
@@ -304,7 +299,7 @@ func TestFailTemplateValidationForm(t *testing.T) {
 	router.POST("/hello/:Name", Validate(h, false, nil))
 	router.ServeHTTP(rr, req)
 
-	want := `error: &mid.ValidationError{Fields:map[string]string{"Age":"non zero value required"}}`
+	want := `dump: &mid.ValidationErrors{Fields:map[string]string{"Age":"non zero value required"}}`
 	got := rr.Body.String()
 
 	if status := rr.Code; status != http.StatusBadRequest {

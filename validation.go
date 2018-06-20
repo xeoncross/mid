@@ -10,12 +10,12 @@ import (
 	"github.com/gorilla/schema"
 )
 
-// ValidationError occurs whenever one or more fields fail the validation by govalidator
-type ValidationError struct {
+// ValidationErrors occurs whenever one or more fields fail the validation by govalidator
+type ValidationErrors struct {
 	Fields map[string]string
 }
 
-func (v ValidationError) Error() string {
+func (v ValidationErrors) Error() string {
 	s := []string{}
 	for k, v := range v.Fields {
 		s = append(s, fmt.Sprintf("%s: %s", k, v))
@@ -23,7 +23,7 @@ func (v ValidationError) Error() string {
 	return fmt.Sprintf("Validation error: %s", strings.Join(s, ","))
 }
 
-// ValidateStruct provided returning a ValidationError or error
+// ValidateStruct provided returning a ValidationErrors or error
 func ValidateStruct(s interface{}, r *http.Request) error {
 
 	if r.Header.Get("Content-Type") == "application/json" {
@@ -74,7 +74,7 @@ func ValidateStruct(s interface{}, r *http.Request) error {
 
 	if !isValid {
 		m := govalidator.ErrorsByField(err)
-		return &ValidationError{
+		return &ValidationErrors{
 			Fields: m,
 		}
 	}
