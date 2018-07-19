@@ -1,7 +1,6 @@
 package mid
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"reflect"
@@ -43,16 +42,22 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 		}
 
 		// Clone handler (avoids race conditions)
-		h := reflect.New(reflect.TypeOf(handler).Elem()).Interface()
+		// h := reflect.New(reflect.TypeOf(handler).Elem()).Interface()
 
-		h2 := reflect.ValueOf(h)
+		// h2 := reflect.ValueOf(h)
+
+		handlerElem := reflect.TypeOf(handler).Elem()
+		h := reflect.New(handlerElem).Elem()
+		// h := reflect.New(handlerElem).Interface()
+		// h2 := h.Elem()
+
 		// TODO foreach nonzero-field() above, we need to set it's value here
 
 		// fmt.Printf("%+v\n", h)
 
 		var validation ValidationErrors
 		// var validation map[string]string
-		err, validation = ValidateStruct(h2, hc, r)
+		err, validation = ValidateStruct(h, hc, r, ps)
 
 		// The error had to do with parsing the request body or content length
 		if err != nil {
@@ -70,10 +75,8 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 			return
 		}
 
-		fmt.Println("calling handler")
-
 		// Call our handler
-		reflect.ValueOf(h).MethodByName("ServeHTTP").Call([]reflect.Value{
+		h.MethodByName("ServeHTTP").Call([]reflect.Value{
 			reflect.ValueOf(w),
 			reflect.ValueOf(r),
 			reflect.ValueOf(ps),

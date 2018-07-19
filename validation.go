@@ -2,12 +2,12 @@ package mid
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"reflect"
 
 	"github.com/asaskevich/govalidator"
 	"github.com/gorilla/schema"
+	"github.com/julienschmidt/httprouter"
 )
 
 // ValidationErrors occurs whenever one or more fields fail the validation by govalidator
@@ -23,19 +23,16 @@ type ValidationErrors map[string]string
 // }
 
 // ValidateStruct provided returning a ValidationErrors or error
-func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request) (err error, validation ValidationErrors) {
-
-	// handlerObject := s.(reflect.Value)
+func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request, ps httprouter.Params) (err error, validation ValidationErrors) {
 
 	// if r.Header.Get("Content-Type") == "application/json" {
 	if hc.body {
-
-		fmt.Println("decode json")
 
 		body := h.FieldByName(FieldBody)
 		b := body.Addr().Interface()
 
 		err = json.NewDecoder(r.Body).Decode(b)
+		// fmt.Printf("Decoded JSON: %+v\n", b)
 
 		if err != nil {
 			// We don't care about type errors
@@ -59,8 +56,6 @@ func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request) (err er
 
 	} else if hc.form { // GET or application/x-www-form-urlencoded
 
-		fmt.Println("decode form")
-
 		form := h.FieldByName(FieldForm)
 		f := form.Addr().Interface()
 
@@ -82,9 +77,46 @@ func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request) (err er
 		decoder.Decode(f, r.Form)
 	}
 
+	// Query params?
+	if hc.query {
+		query := h.FieldByName(FieldQuery)
+		queryType := query.Type()
+
+		queryValues := r.URL.Query()
+		for i := 0; i < query.NumField(); i++ {
+			field := queryType.Field(i)
+
+			var s string
+			tag, ok := field.Tag.Lookup(TagQuery)
+			if ok {
+				s = queryValues.Get(tag)
+			} else {
+				s = queryValues.Get(field.Name)
+			}
+
+			f := query.Field(i)
+			f.SetString(s)
+		}
+	}
+
+	if hc.param {
+		param := h.FieldByName(FieldParameter)
+		paramType := param.Type()
+
+		numFields := paramType.NumField()
+		for i := 0; i < numFields; i++ {
+			field := paramType.Field(i)
+
+			s := ps.ByName(field.Name)
+			val := param.Field(i)
+			val.SetString(s)
+
+		}
+	}
+
 	// 2. Validate the struct data rules
 	var isValid bool
-	isValid, err = govalidator.ValidateStruct(h)
+	isValid, err = govalidator.ValidateStruct(h.Interface())
 
 	if !isValid {
 		validation = ValidationErrors(govalidator.ErrorsByField(err))

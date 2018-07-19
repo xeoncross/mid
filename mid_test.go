@@ -73,14 +73,20 @@ func formBody(data *url.Values) (io.Reader, string) {
 
 // JSON response
 type handlerWithoutTemplate struct {
-	Username string
-	Name     string
-	Age      int `valid:"required"`
-	// nojson   bool
+	Body struct {
+		Username string
+		Name     string
+		Age      int `valid:"required"`
+	} `valid:"required"`
+	Param struct {
+		Name string `valid:"alpha"`
+	}
+	nojson bool // TODO
 }
 
 func (h handlerWithoutTemplate) ServeHTTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ValidationErrors ValidationErrors) error {
-	fmt.Println("ServeHTTP called", ValidationErrors)
+	fmt.Printf("h.ValidationErrors: %+v\n", ValidationErrors)
+	fmt.Printf("h: %+v\n", h)
 	w.Write([]byte("Success"))
 	return nil
 }
@@ -210,7 +216,7 @@ func TestFailTemplateValidationJSON(t *testing.T) {
 		Username string
 		Age      []string
 		template string
-	}{Username: "John", Age: []string{"foo"}, template: "foo"}
+	}{Username: "John342", Age: []string{"foo"}, template: "foo"}
 
 	body, contentType := jsonBody(data)
 

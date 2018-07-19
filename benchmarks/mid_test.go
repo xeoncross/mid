@@ -11,27 +11,27 @@ import (
 )
 
 type MidHandler struct {
-	Username         string
-	Name             string
-	Age              int `valid:"required"`
-	validationErrors mid.ValidationError
-	Template         *template.Template
+	Username string
+	Name     string
+	Age      int `valid:"required"`
+	// validationErrors mid.ValidationErrors
+	Template *template.Template
 }
 
-func (m MidHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, validationErrors *mid.ValidationError) (int, error) {
+func (m MidHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, validationErrors mid.ValidationErrors) error {
 
-	if &validationErrors != nil {
-		return 0, nil
+	if len(validationErrors) == 0 {
+		return nil
 	}
 
-	return http.StatusOK, nil
+	return nil
 }
 
 func BenchmarkMid(b *testing.B) {
 
 	rr := httptest.NewRecorder()
 	router := httprouter.New()
-	router.POST("/hello/:Name", mid.Validate(&MidHandler{}, false))
+	router.POST("/hello/:Name", mid.Validate(&MidHandler{}, false, nil))
 
 	data := struct {
 		Username string

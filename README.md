@@ -51,6 +51,15 @@ handler). However, if a `NOJSON` function/property is defined on the struct then
 we call the handler providing the results of the validation and let it run
 normally.
 
+This allows handlers to render XML, templates, or anything else along with the
+pre-validated input information.
+
+## TODO
+
+Need to make the validation handler re-attach any struct properties that contain
+non-zero values. This is so you can set database handles or other things on the
+handler and have them passed onto the new copy when the handler is cloned.
+
 
 
 ## Related Projects
