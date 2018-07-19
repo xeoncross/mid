@@ -4,31 +4,38 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
+	"reflect"
 
 	"github.com/asaskevich/govalidator"
 	"github.com/gorilla/schema"
 )
 
 // ValidationErrors occurs whenever one or more fields fail the validation by govalidator
-type ValidationErrors struct {
-	Fields map[string]string
-}
+type ValidationErrors map[string]string
 
-func (v ValidationErrors) Error() string {
-	s := []string{}
-	for k, v := range v.Fields {
-		s = append(s, fmt.Sprintf("%s: %s", k, v))
-	}
-	return fmt.Sprintf("Validation error: %s", strings.Join(s, ","))
-}
+//
+// func (v ValidationErrors) Error() string {
+// 	s := []string{}
+// 	for k, v := range v {
+// 		s = append(s, fmt.Sprintf("%s: %s", k, v))
+// 	}
+// 	return fmt.Sprintf("Validation error: %s", strings.Join(s, ","))
+// }
 
 // ValidateStruct provided returning a ValidationErrors or error
-func ValidateStruct(s interface{}, r *http.Request) error {
+func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request) (err error, validation ValidationErrors) {
 
-	if r.Header.Get("Content-Type") == "application/json" {
+	// handlerObject := s.(reflect.Value)
 
-		err := json.NewDecoder(r.Body).Decode(s)
+	// if r.Header.Get("Content-Type") == "application/json" {
+	if hc.body {
+
+		fmt.Println("decode json")
+
+		body := h.FieldByName(FieldBody)
+		b := body.Addr().Interface()
+
+		err = json.NewDecoder(r.Body).Decode(b)
 
 		if err != nil {
 			// We don't care about type errors
@@ -45,11 +52,17 @@ func ValidateStruct(s interface{}, r *http.Request) error {
 				// We could just ignore all JSON errors like we do with gorilla/schema
 				// However, JSON errors should be rare and could make development
 				// a lot harder if something weird happens. Better alert the client.
-				return fmt.Errorf("Invalid JSON: %s", err.Error())
+				// return fmt.Errorf("Invalid JSON: %s", err.Error()), validation
+				return
 			}
 		}
 
-	} else { // GET or application/x-www-form-urlencoded
+	} else if hc.form { // GET or application/x-www-form-urlencoded
+
+		fmt.Println("decode form")
+
+		form := h.FieldByName(FieldForm)
+		f := form.Addr().Interface()
 
 		// Parse the input (Already called if using DefaultHandlers)
 		r.ParseForm()
@@ -66,18 +79,16 @@ func ValidateStruct(s interface{}, r *http.Request) error {
 
 		// gorilla/schema errors share application handler structure which is
 		// not safe for us, nor helpful to our clients
-		decoder.Decode(s, r.Form)
+		decoder.Decode(f, r.Form)
 	}
 
 	// 2. Validate the struct data rules
-	isValid, err := govalidator.ValidateStruct(s)
+	var isValid bool
+	isValid, err = govalidator.ValidateStruct(h)
 
 	if !isValid {
-		m := govalidator.ErrorsByField(err)
-		return &ValidationErrors{
-			Fields: m,
-		}
+		validation = ValidationErrors(govalidator.ErrorsByField(err))
 	}
 
-	return nil
+	return nil, validation
 }

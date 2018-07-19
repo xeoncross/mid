@@ -30,7 +30,8 @@ The original idea of a single handler that returns JSON or HTML depending on if
 a `template.Template` is set doesn't make much sense.
 
 - Endpoints should be JSON only not rendering pages (Modern web apps).
-- HTML pages that don't use AJAX should not send back AJAX.
+- HTML pages that don't use AJAX need to run handler again, so mid can't provide
+  any kind of short cut.
 
 Originally I was going to have any request that does not contain all required data
 bypass the handler and return the errors.
@@ -42,6 +43,13 @@ useful to skip that part.
 Consider a form that needs to be rendered on first load + some select lists or
 other data provided by the handler. Validation only applies on a subsequent POST
 request, but we would still need the extra data provided by the handler.
+
+## Solution
+
+Validation defaults to returning JSON objects on failure (never calling the
+handler). However, if a `NOJSON` function/property is defined on the struct then
+we call the handler providing the results of the validation and let it run
+normally.
 
 
 

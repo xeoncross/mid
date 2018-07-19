@@ -2,230 +2,83 @@ package mid
 
 import (
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"reflect"
-	"runtime"
-	"strings"
-	"unsafe"
 
 	"github.com/julienschmidt/httprouter"
 )
 
+const NOJSON = "nojson"
+
 type ValidationHandler interface {
-	ServeHTTP(http.ResponseWriter, *http.Request, *ValidationErrors) error
+	ServeHTTP(http.ResponseWriter, *http.Request, httprouter.Params, ValidationErrors) error
 }
 
-// func NewValidator(debug bool, logger *log.Logger) func(ValidationHandler) httprouter.Handle {
-// 	// Default to showing errors in the console / log file
-// 	if logger == nil {
-// 		logger = log.New(os.Stderr, "", log.LstdFlags)
-// 	}
-//
-// 	return func(handler ValidationHandler) httprouter.Handle {
-// 		return Validate(handler, debug, logger)
-// 	}
-// }
+// Check a struct/pointer contains a field marker
+func containsField(a interface{}, field string) (bool, error) {
+	return reflect.Indirect(reflect.ValueOf(a)).FieldByName(field).IsValid(), nil
+}
 
 // Validate a http.Handler providing JSON or HTML responses
 func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger) httprouter.Handle {
 
-	// Load this handlers template (if any)
-	var handlerTemplate *template.Template
-	var errorTemplate *template.Template
-	var validationErrorsField string
+	// By default, we return JSON on validation errors and skip calling
+	// the handler. If the "nojson" marker is set on the handler, we instead
+	// call the handler passing the validation results.
+	// var nojson = reflect.Indirect(reflect.ValueOf(handler)).FieldByName(NOJSON).IsValid()
 
-	// If this Handler has an HTML template defined then we will assume it
-	// is NOT a JSON endpoint and let them deal with validation errors
-	// https://golang.org/pkg/reflect/#Indirect works on pointers or values
-	e := reflect.Indirect(reflect.ValueOf(handler))
-	for i := 0; i < e.NumField(); i++ {
-		field := e.Field(i)
+	hc := handlerContext{}
+	hc.checkRequestFields(reflect.TypeOf(handler).Elem())
 
-		// fmt.Printf("%+v\n", field.Type().Name())
-
-		if field.IsValid() && field.Kind() == reflect.Ptr && !field.IsNil() {
-
-			// https://stackoverflow.com/questions/42664837/access-unexported-fields-in-golang-reflect
-			fieldValue := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
-
-			if t, ok := fieldValue.Interface().(*template.Template); ok {
-				if strings.Contains(t.Name(), "error") {
-					errorTemplate = t
-				} else {
-					handlerTemplate = t
-				}
-			} else if _, ok := fieldValue.Interface().(*ValidationErrors); ok {
-
-				// If obj field value is not settable an error is thrown
-				if fieldValue.CanSet() {
-					fmt.Printf("ValidationErrors field found on %s -> %#v\n", field.Type().Name(), handler)
-					validationErrorsField = field.Type().Name()
-				}
-			}
-		}
-	}
-
-	// // Send an error to the user's client
-	// renderError := func(w http.ResponseWriter, err error) {
-	// 	// https://github.com/goadesign/goa/blob/master/middleware/recover.go
-	// 	const size = 64 << 10 // 64KB
-	// 	buf := make([]byte, size)
-	// 	buf = buf[:runtime.Stack(buf, false)]
-	// 	lines := strings.Split(string(buf), "\n")
-	// 	stack := lines[6:]
-	//
-	// 	data := map[string]interface{}{
-	// 		"Error":  err.Error(),
-	// 		"Trace":  strings.Join(stack, "\n"),
-	// 		"Params": ps,
-	// 	}
-	//
-	// 	// If the handler has an error template defined then we defer to them
-	// 	if errorTemplate != nil {
-	// 		_, err := RenderTemplateSafely(w, errorTemplate, http.StatusInternalServerError, data)
-	// 		if err == nil {
-	// 			return
-	// 		}
-	// 	}
-	//
-	// 	if !displayErrors {
-	// 		http.Error(w, http.StatusText(500), http.StatusInternalServerError)
-	// 		return
-	// 	}
-	//
-	// 	http.Error(w, err.Error(), http.StatusInternalServerError)
-	// }
+	// For each field that is notzero(), we need to add it to a slice so we can
+	// populate it with the value of the original handler below
 
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-		defer func() {
-			if r := recover(); r != nil {
-
-				var msg string
-				switch x := r.(type) {
-				case string:
-					msg = fmt.Sprintf("panic: %s", x)
-				case error:
-					msg = fmt.Sprintf("panic: %s", x)
-				default:
-					msg = "unknown panic"
-				}
-
-				// https://github.com/goadesign/goa/blob/master/middleware/recover.go
-				const size = 64 << 10 // 64KB
-				buf := make([]byte, size)
-				buf = buf[:runtime.Stack(buf, false)]
-				lines := strings.Split(string(buf), "\n")
-				stack := lines[5:]
-				errorWithTrace := fmt.Sprintf("%s\n%s", msg, strings.Join(stack, "\n"))
-
-				if logger != nil {
-					logger.Println(errorWithTrace)
-				}
-
-				data := map[string]interface{}{
-					"Error":  msg,
-					"Trace":  strings.Join(stack, "\n"),
-					"Params": ps,
-				}
-
-				// If the handler has an error template defined then we defer to them
-				if errorTemplate != nil {
-					_, err := RenderTemplateSafely(w, errorTemplate, http.StatusInternalServerError, data)
-					if err == nil {
-						return
-					}
-				}
-
-				fmt.Println("fallback here...")
-
-				if !displayErrors {
-					http.Error(w, http.StatusText(500), http.StatusInternalServerError)
-					return
-				}
-
-				http.Error(w, errorWithTrace, http.StatusInternalServerError)
-			}
-		}()
-
-		// Duplicate this struct to avoid race conditions
-		h := reflect.New(reflect.TypeOf(handler).Elem()).Interface()
 
 		var err error
-
 		err = ParseInput(w, r, 1024*1024, 1024*1024)
 		if err != nil {
 			panic(err)
 		}
 
-		// URL params trump everything, so we parse them after user input
-		for _, p := range ps {
-			r.Form[p.Key] = []string{p.Value}
-		}
+		// Clone handler (avoids race conditions)
+		h := reflect.New(reflect.TypeOf(handler).Elem()).Interface()
 
-		var ok bool
-		// var status = http.StatusOK
-		// var response interface{}
-		var vError *ValidationErrors
-		err = ValidateStruct(h, r)
+		h2 := reflect.ValueOf(h)
+		// TODO foreach nonzero-field() above, we need to set it's value here
+
+		// fmt.Printf("%+v\n", h)
+
+		var validation ValidationErrors
+		// var validation map[string]string
+		err, validation = ValidateStruct(h2, hc, r)
 
 		// The error had to do with parsing the request body or content length
 		if err != nil {
-			if vError, ok = err.(*ValidationErrors); !ok {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if hc.nojson == false {
+			_, err = JSON(w, 200, struct {
+				Fields ValidationErrors `json:"Fields"`
+			}{Fields: validation})
+			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			} else if validationErrorsField != "" {
-
-				// Fetch the field reflect.Value
-				structValue := reflect.ValueOf(h).Elem()
-				structFieldValue := structValue.FieldByName(validationErrorsField)
-
-				val := reflect.ValueOf(vError)
-				structFieldValue.Set(val)
 			}
+			return
 		}
 
-		// fmt.Printf("H: %#v\n", h)
-		//
-		// func(h ValidationHandler) {
-		// 	h.ValidationErrors = vError
-		// 	// h[validationErrorsField] = vError
-		// }(h.(ValidationHandler))
+		fmt.Println("calling handler")
 
-		// Validation error, and we don't have a template - return JSON
-		if err != nil && handlerTemplate == nil {
-			// status = http.StatusBadRequest
-		} else {
-			// Validation errors or not, let the handler decide what is next
-			response := reflect.ValueOf(h).MethodByName("ServeHTTP").Call([]reflect.Value{
-				reflect.ValueOf(w),
-				reflect.ValueOf(r),
-				reflect.ValueOf(vError),
-			})
-
-			if !response[0].IsNil() {
-				err = response[0].Interface().(error)
-			}
-		}
-
-		// log.Printf("Response: %v", err)
-		var size int
-
-		// Handler returned error
-		if err != nil && err != vError {
-			size, err = Finalize(http.StatusBadRequest, err, errorTemplate, w)
-
-			// Validation returned error
-		} else if err != nil {
-			size, err = Finalize(http.StatusBadRequest, err, handlerTemplate, w)
-			// Handler and Validation returned no errors
-		} else {
-			size, err = Finalize(http.StatusOK, h, handlerTemplate, w)
-		}
-
-		_ = size
-		// logger.Println(r.Method, r.RequestURI, status, size)
+		// Call our handler
+		reflect.ValueOf(h).MethodByName("ServeHTTP").Call([]reflect.Value{
+			reflect.ValueOf(w),
+			reflect.ValueOf(r),
+			reflect.ValueOf(ps),
+			reflect.ValueOf(validation),
+		})
 	}
 }
 
