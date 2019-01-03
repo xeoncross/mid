@@ -130,13 +130,21 @@ non-zero values. This is so you can set database handles or other things on the
 handler and have them passed onto the new copy when the handler is cloned.
 
 
+## Alternative Method(s)
+
+Rather than making the handler into the validation schema, you can also use a separate struct for the validation mapping so that multiple handlers can share. The downside is more typing and structs for _possible_ code resuse. Separation could ideal so this might be a superior method.
+
+- https://github.com/mholt/binding
+
+
+
 ## Related Projects
 
 These projects are related in the sense of returning of structs/errors/maps directly from HTTP handlers and providing automatic input validation.
 
 - [Gongular](https://github.com/mustafaakin/gongular#how-to-use) (more features, uses reflection)
 - [Macaron](https://go-macaron.com/docs/intro/core_concepts)
-- [Tango](https://github.com/lunny/tango)
+- [Tango](https://github.com/tango-contrib/binding)
 
 
 ## Reading

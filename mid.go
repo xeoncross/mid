@@ -58,7 +58,7 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 		}
 
 		// If not prohibited, send validation errors without calling handler
-		if hc.nojson == false {
+		if hc.nojson == false && len(validation) != 0 {
 			_, err = JSON(w, 200, struct {
 				Fields ValidationErrors `json:"Fields"`
 			}{Fields: validation})
@@ -69,12 +69,22 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 		}
 
 		// Call our handler
-		h.MethodByName("ServeHTTP").Call([]reflect.Value{
+		res := h.MethodByName("ValidatedHTTP").Call([]reflect.Value{
 			reflect.ValueOf(w),
 			reflect.ValueOf(r),
 			reflect.ValueOf(ps),
 			reflect.ValueOf(validation),
 		})
+
+		// TODO: do we want to handle errors or remove them from the signature?
+
+		// Returned type MUST be error due to function signature
+		err, _ = res[0].Interface().(error)
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+
 	}
 }
 

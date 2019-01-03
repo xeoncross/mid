@@ -60,8 +60,17 @@ func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request, ps http
 		form := h.FieldByName(FieldForm)
 		f := form.Addr().Interface()
 
-		// Parse the input (Already called if using DefaultHandlers)
-		r.ParseForm()
+		// https://golang.org/pkg/net/http/#Request.ParseMultipartForm
+		// Also pulls url query params into r.Form
+		if r.Header.Get("Content-Type") == "multipart/form-data" {
+			// 10MB: https://golang.org/src/net/http/request.go#L1137
+			err = r.ParseMultipartForm(int64(10 << 20))
+			if err != nil {
+				return
+			}
+		} else {
+			r.ParseForm()
+		}
 
 		// 1. Try to insert form data into the struct
 		decoder := schema.NewDecoder()
