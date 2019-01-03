@@ -26,6 +26,37 @@ Most middleware libraries solve easy problems like error recovery and logging. I
   - https://github.com/gorilla/mux (TODO)
   - https://github.com/julienschmidt/httprouter
 
+## Usage
+
+You create a handler which has struct properties that match the parameters you are expecting. These values can be form fields, JSON bodies, or URL params.
+
+```
+type MyHandler struct {
+	Body struct {
+		Bio string
+		Age int `valid:"required"`
+	}
+	Param struct {
+		Name string `valid:"alpha"`
+	}
+}
+
+func (h MyHandler) ValidateHTTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ValidationErrors ValidationErrors) error {
+	fmt.Printf("Validation Errors: %+v\n", ValidationErrors)
+	fmt.Printf("Populated Handler: %+v\n", h)
+	return nil
+}
+```
+
+Then you ask Mid to validate all requests so that only ones matching the values + rules of the handlers run the handler. In the route below, we expect a `HTTP POST` request to the URL path `/hello/[alpha]` with the two values `Bio` and `Age` either sent as `multipart/form-data` or an `application/json` body.
+
+```
+router := httprouter.New()
+router.POST("/hello/:Name", Validate(&MyHandler{}, false, nil))
+```
+
+Any invalid requests will receive a JSON response stating which fields have invalid values. If you want to handle the response yourself, you can set a special `nojson bool` property on your handler struct.
+
 # Templates
 
 Please use https://github.com/Xeoncross/got - a minimal wrapper to improve Go `html/template` usage with no loss of speed.
