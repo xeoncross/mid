@@ -40,6 +40,7 @@ func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request, ps http
 			switch err.(type) {
 			// json: cannot unmarshal string into Go struct field A.Foo of type foo.Bar
 			case *json.UnmarshalTypeError:
+				// fmt.Printf("Decoded JSON: %+v\n", b)
 				// err = fmt.Errorf("JSON: Unexpected type '%s' for field '%s'", e.Value, e.Field)
 				// log.Printf("UnmarshalTypeError: Value[%s] Type[%v]\n", e.Value, e.Type)
 			case *json.InvalidUnmarshalError:

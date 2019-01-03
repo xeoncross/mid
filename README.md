@@ -41,7 +41,7 @@ type MyHandler struct {
 	}
 }
 
-func (h MyHandler) ValidateHTTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ValidationErrors ValidationErrors) error {
+func (h MyHandler) ValidatedHTTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ValidationErrors ValidationErrors) error {
 	fmt.Printf("Validation Errors: %+v\n", ValidationErrors)
 	fmt.Printf("Populated Handler: %+v\n", h)
 	return nil

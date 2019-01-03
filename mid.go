@@ -8,10 +8,8 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-const NOJSON = "nojson"
-
 type ValidationHandler interface {
-	ServeHTTP(http.ResponseWriter, *http.Request, httprouter.Params, ValidationErrors) error
+	ValidatedHTTP(http.ResponseWriter, *http.Request, httprouter.Params, ValidationErrors) error
 }
 
 // Check a struct/pointer contains a field marker
@@ -25,7 +23,6 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 	// By default, we return JSON on validation errors and skip calling
 	// the handler. If the "nojson" marker is set on the handler, we instead
 	// call the handler passing the validation results.
-	// var nojson = reflect.Indirect(reflect.ValueOf(handler)).FieldByName(NOJSON).IsValid()
 
 	hc := handlerContext{}
 	hc.checkRequestFields(reflect.TypeOf(handler).Elem())
@@ -36,21 +33,22 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 		var err error
-		err = ParseInput(w, r, 1024*1024, 1024*1024)
-		if err != nil {
-			panic(err)
-		}
+
+		// TODO we need to handle parsing input in more user-controlled way
+		// err = ParseInput(w, r, 1024*1024, 1024*1024)
+		// if err != nil {
+		// 	panic(err)
+		// }
 
 		// Clone handler (avoids race conditions)
 		// h := reflect.New(reflect.TypeOf(handler).Elem()).Interface()
-
 		handlerElem := reflect.TypeOf(handler).Elem()
 		h := reflect.New(handlerElem).Elem()
 
 		// TODO foreach nonzero-field() above, we need to set it's value here
+		// Dependency Injection
 
 		var validation ValidationErrors
-		// var validation map[string]string
 		err, validation = ValidateStruct(h, hc, r, ps)
 
 		// The error had to do with parsing the request body or content length
@@ -59,6 +57,7 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 			return
 		}
 
+		// If not prohibited, send validation errors without calling handler
 		if hc.nojson == false {
 			_, err = JSON(w, 200, struct {
 				Fields ValidationErrors `json:"Fields"`
@@ -79,25 +78,25 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 	}
 }
 
-// ParseInput from request
-func ParseInput(w http.ResponseWriter, r *http.Request, MaxRequestSize int64, MaxRequestFileSize int64) error {
-
-	// Limit the total request size
-	// https://stackoverflow.com/questions/28282370/is-it-advisable-to-further-limit-the-size-of-forms-when-using-golang?rq=1
-	// Not needed: https://golang.org/src/net/http/request.go#L1103
-	r.Body = http.MaxBytesReader(w, r.Body, MaxRequestSize)
-
-	// Limit the max individual file size
-	// https://golang.org/pkg/net/http/#Request.ParseMultipartForm
-	// Also pulls url query params into r.Form
-	if r.Header.Get("Content-Type") == "multipart/form-data" {
-		err := r.ParseMultipartForm(MaxRequestFileSize)
-		if err != nil {
-			return err
-		}
-	} else {
-		r.ParseForm()
-	}
-
-	return nil
-}
+// // ParseInput from request
+// func ParseInput(w http.ResponseWriter, r *http.Request, MaxRequestSize int64, MaxRequestFileSize int64) error {
+//
+// 	// Limit the total request size
+// 	// https://stackoverflow.com/questions/28282370/is-it-advisable-to-further-limit-the-size-of-forms-when-using-golang?rq=1
+// 	// Not needed: https://golang.org/src/net/http/request.go#L1103
+// 	r.Body = http.MaxBytesReader(w, r.Body, MaxRequestSize)
+//
+// 	// Limit the max individual file size
+// 	// https://golang.org/pkg/net/http/#Request.ParseMultipartForm
+// 	// Also pulls url query params into r.Form
+// 	if r.Header.Get("Content-Type") == "multipart/form-data" {
+// 		err := r.ParseMultipartForm(MaxRequestFileSize)
+// 		if err != nil {
+// 			return err
+// 		}
+// 	} else {
+// 		r.ParseForm()
+// 	}
+//
+// 	return nil
+// }

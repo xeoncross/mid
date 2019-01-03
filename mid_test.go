@@ -72,7 +72,7 @@ func formBody(data *url.Values) (io.Reader, string) {
 // 	errorTemplate    *template.Template // Nil for some of the tests
 // }
 //
-// func (h handlerWithTemplate) ServeHTTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ValidationErrors *ValidationErrors) error {
+// func (h handlerWithTemplate) ValidatedHTTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ValidationErrors *ValidationErrors) error {
 // 	return nil
 // }
 
@@ -82,14 +82,14 @@ type handlerWithoutTemplate struct {
 		Username string
 		Name     string
 		Age      int `valid:"required"`
-	} `valid:"required"`
+	}
 	Param struct {
 		Name string `valid:"alpha"`
 	}
-	nojson bool // TODO
+	// nojson bool // TODO
 }
 
-func (h handlerWithoutTemplate) ServeHTTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ValidationErrors ValidationErrors) error {
+func (h handlerWithoutTemplate) ValidatedHTTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ValidationErrors ValidationErrors) error {
 	fmt.Printf("h.ValidationErrors: %+v\n", ValidationErrors)
 	fmt.Printf("h: %+v\n", h)
 	w.Write([]byte("Success"))
@@ -103,7 +103,7 @@ func (h handlerWithoutTemplate) ServeHTTP(w http.ResponseWriter, r *http.Request
 // 	errorTemplate *template.Template // Nil for some of the tests
 // }
 //
-// func (h handlerWithException) ServeHTTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ValidationErrors *ValidationErrors) error {
+// func (h handlerWithException) ValidatedHTTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ValidationErrors *ValidationErrors) error {
 // 	panic("handlerWithException->panic")
 // }
 
