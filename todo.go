@@ -16,20 +16,27 @@ package mid
 // 		h.ServeHTTP(w, r) // all params present, proceed
 // 	})
 // }
-
-// https://gist.github.com/iamphill/9dfafc668a3c1cd79bcd
-// http://www.alexedwards.net/blog/golang-response-snippets#nesting
-// Could build a middleware that would take the result and place
-// it inside a template like JSON() does
-// func parseTemplate(fileName string, data interface{})(output []byte, err error) {
-// 	var buf bytes.Buffer
-// 	template, err := template.ParseFiles(fileName)
-// 	if err != nil {
-// 		return nil, err
+//
+// // Throttle one http.Handler (or the whole mux)
+// func Throttle(h http.Handler, n int) http.Handler {
+// 	sema := make(chan struct{}, n)
+//
+// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// 		sema <- struct{}{}
+// 		h.ServeHTTP(w, r)
+// 		<-sema
+// 	})
+// }
+//
+// // Throttler creates a re-usable limiter for multiple http.Handlers
+// func Throttler(n int) func(http.Handler) http.Handler {
+// 	sema := make(chan struct{}, n)
+//
+// 	return func(h http.Handler) http.Handler {
+// 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// 			sema <- struct{}{}
+// 			h.ServeHTTP(w, r)
+// 			<-sema
+// 		})
 // 	}
-// 	err = template.Execute(&buf, data)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return buf.Bytes(), nil
 // }

@@ -44,16 +44,10 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 		// Clone handler (avoids race conditions)
 		// h := reflect.New(reflect.TypeOf(handler).Elem()).Interface()
 
-		// h2 := reflect.ValueOf(h)
-
 		handlerElem := reflect.TypeOf(handler).Elem()
 		h := reflect.New(handlerElem).Elem()
-		// h := reflect.New(handlerElem).Interface()
-		// h2 := h.Elem()
 
 		// TODO foreach nonzero-field() above, we need to set it's value here
-
-		// fmt.Printf("%+v\n", h)
 
 		var validation ValidationErrors
 		// var validation map[string]string
