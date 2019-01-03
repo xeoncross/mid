@@ -30,7 +30,12 @@ var errorTemplate = newTemplate("error", `error: {{printf "%#v" . | noescape}}`)
 
 // Wrapper so we can add a noescape helper to our templates
 func newTemplate(name, body string) *template.Template {
-	t := template.Must(template.New(name).Funcs(DefaultTemplateFunctions).Parse(body))
+	t := template.Must(template.New(name).Funcs(template.FuncMap{
+		// Allow unsafe injection into HTML
+		"noescape": func(a ...interface{}) template.HTML {
+			return template.HTML(fmt.Sprint(a...))
+		},
+	}).Parse(body))
 	return t
 }
 

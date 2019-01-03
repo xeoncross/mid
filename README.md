@@ -1,12 +1,20 @@
 # mid
 
-Simple Go HTTP middleware for reducing code substantially when building a web app. `net/http` compatible.
+Simple Go HTTP middleware for reducing code substantially when building a web app.
+
+- `net/http` compatible.
+- Biggest feature is automatic input validation.
+- No framework lock-in
 
 See the [examples](https://github.com/Xeoncross/mid/tree/master/examples).
 
+###Warning
+
+This is alpha quality software. The unit tests aren't finished and the API might change.
+
 ## Why?
 
-Most middleware libraries solve easy problems like error recovery and logging. I wanted something that would help me validate user input, render nested templates, return JSON responses, and other common tasks.
+Most middleware libraries solve easy problems like error recovery and logging. I wanted something that would help me validate user input, return JSON/gRPC responses, and other common tasks.
 
 ### Mid is
 
@@ -15,12 +23,42 @@ Most middleware libraries solve easy problems like error recovery and logging. I
 - DRY ([Don't repeat yourself](https://en.wikipedia.org/wiki/Don%27t_repeat_yourself))
 - Compatible with the big three http routers/multiplexers:
   - `net/http`
-  - https://github.com/gorilla/mux
-  - https://github.com/julienschmidt/httprouter (TODO)
+  - https://github.com/gorilla/mux (TODO)
+  - https://github.com/julienschmidt/httprouter
 
-## Thoughts
+# Templates
 
-Adding template support to gongular seems to be a flop unless we assume:
+Please use https://github.com/Xeoncross/got - a minimal wrapper to improve Go `html/template` usage with no loss of speed.
+
+# Benchmarks
+
+The performance of Mid is almost twice of that of Gongular. However, part of this is that Gongular is a full framework (lots of extra wrappers and allocs). Mid is simply a chainable middleware, trying to stay out of the way.
+
+One big feature (incomplete in mid) is dependency injection.
+
+```
+$ go test --bench=. --benchmem
+goos: darwin
+goarch: amd64
+pkg: github.com/Xeoncross/mid/benchmarks
+BenchmarkGongular-8   	  200000	      7481 ns/op	    7332 B/op	      60 allocs/op
+BenchmarkMid-8        	  300000	      4363 ns/op	    2568 B/op	      38 allocs/op
+BenchmarkVanilla-8    	 3000000	       460 ns/op	      64 B/op	       6 allocs/op
+```
+
+# Background
+
+[Gongular](github.com/mustafaakin/gongular) is a neat framework that handles input validation and DI for the http.Handler. However, they don't support HTTP templates. It also adds noticeable overhead.
+
+My goals were:
+
+ - to simplify the code
+ - increase performance
+ - support non-JSON response bodies (especially `html/template`)
+
+## Inspiration
+
+Originally, I wanted to add template support to gongular. However, this idea seems to be a flop unless we assume:
 
 1. a non-javascript site
 2. only apply validation if a POST/PUT/DELETE request.
@@ -30,7 +68,7 @@ The original idea of a single handler that returns JSON or HTML depending on if
 a `template.Template` is set doesn't make much sense.
 
 - Endpoints should be JSON only not rendering pages (Modern web apps).
-- HTML pages that don't use AJAX need to run handler again, so mid can't provide
+- HTML pages that don't use AJAX need to run the handler again, so mid can't provide
   any kind of short cut.
 
 Originally I was going to have any request that does not contain all required data
@@ -59,7 +97,6 @@ pre-validated input information.
 Need to make the validation handler re-attach any struct properties that contain
 non-zero values. This is so you can set database handles or other things on the
 handler and have them passed onto the new copy when the handler is cloned.
-
 
 
 ## Related Projects
