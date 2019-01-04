@@ -8,29 +8,19 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-func TestHandlerPanic(t *testing.T) {
+func TestHandlerWithError(t *testing.T) {
 
-	data := struct {
-		Username string
-		Age      int
-		template string
-	}{Username: "John", Age: 10, template: "foo"}
-
-	body, contentType := jsonBody(data)
-
-	req, err := http.NewRequest("POST", "/hello/John", body)
+	req, err := http.NewRequest("GET", "/", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	req.Header.Add("Content-Type", contentType)
 
 	rr := httptest.NewRecorder()
 
 	h := &handlerWithError{}
 
 	router := httprouter.New()
-	router.POST("/hello/:Name", Validate(h, false, nil))
+	router.GET("/", Validate(h, false, nil))
 	router.ServeHTTP(rr, req)
 
 	if status := rr.Code; status != http.StatusInternalServerError {
@@ -38,9 +28,39 @@ func TestHandlerPanic(t *testing.T) {
 		t.Error(rr.Body.String())
 	}
 
+	if rr.Body.String() != "Handler Error\n" {
+		t.Error("handler returned wrong error:", rr.Body.String())
+	}
+
 }
 
-// func TestHandlerPanicWithTemplate(t *testing.T) {
+func TestHandlerWithErrorValidation(t *testing.T) {
+
+	req, err := http.NewRequest("GET", "/0", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+
+	h := &handlerWithError{}
+
+	router := httprouter.New()
+	router.GET("/:Name", Validate(h, false, nil))
+	router.ServeHTTP(rr, req)
+
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+		t.Error(rr.Body.String())
+	}
+
+	if rr.Body.String() != `{"Fields":{"Name":"0 does not validate as alpha"}}`+"\n" {
+		t.Error("handler returned wrong error:", rr.Body.String())
+	}
+
+}
+
+// func TestHandlerWithError(t *testing.T) {
 //
 // 	data := struct {
 // 		Username string
@@ -59,7 +79,7 @@ func TestHandlerPanic(t *testing.T) {
 //
 // 	rr := httptest.NewRecorder()
 //
-// 	h := &handlerWithException{errorTemplate: errorTemplate}
+// 	h := &handlerWithError{}
 //
 // 	router := httprouter.New()
 // 	router.POST("/hello/:Name", Validate(h, false, nil))
@@ -220,4 +240,63 @@ func TestFailTemplateValidationJSON(t *testing.T) {
 // 	if got != want {
 // 		t.Errorf("handler returned wrong body:\n\tgot:  %v\n\twant: %v", got, want)
 // 	}
+// }
+
+// func TestHandlers(t *testing.T) {
+//
+// 	requests := []struct {
+// 		Name       string
+// 		Data       interface{}
+// 		URL        string
+// 		Method     string
+// 		StatusCode int
+// 		Response   string
+// 		Handler    ValidationHandler
+// 	}{
+// 		{
+// 			Name:       "Handler With Params",
+// 			Data:       nil,
+// 			URL:        "/",
+// 			StatusCode: http.StatusInternalServerError,
+// 			Handler:    &handlerWithParams{},
+// 		},
+// 		{
+// 			Name:       "Handler With Error",
+// 			Data:       nil,
+// 			StatusCode: http.StatusInternalServerError,
+// 			Handler:    &handlerWithError{},
+// 		},
+// 	}
+//
+// 	for _, req := range requests {
+// 		t.Run(req.Name, func(t *testing.T) {
+// 			body, contentType := jsonBody(req.Data)
+//
+// 			method := "POST"
+// 			if req.Method != "" {
+// 				method = req.Method
+// 			}
+//
+// 			req, err := http.NewRequest(method, req.URL, body)
+// 			if err != nil {
+// 				t.Fatal(err)
+// 			}
+//
+// 			req.Header.Add("Content-Type", contentType)
+//
+// 			rr := httptest.NewRecorder()
+//
+// 			h := &handlerWithError{}
+//
+// 			router := httprouter.New()
+// 			router.POST("/hello/:Name", Validate(h, false, nil))
+// 			router.ServeHTTP(rr, req)
+//
+// 			if status := rr.Code; status != http.StatusInternalServerError {
+// 				t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusInternalServerError)
+// 				t.Error(rr.Body.String())
+// 			}
+// 		})
+// 	}
+//
 // }

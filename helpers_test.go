@@ -3,16 +3,12 @@ package mid
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html/template"
 	"io"
 	"log"
-	"net/http"
 	"net/url"
 	"strings"
-
-	"github.com/julienschmidt/httprouter"
 )
 
 // Global "dump" Template which simply dumps the template variables on render
@@ -55,62 +51,4 @@ func jsonBody(data interface{}) (io.Reader, string) {
 // HTML Form Data
 func formBody(data *url.Values) (io.Reader, string) {
 	return strings.NewReader(data.Encode()), "application/x-www-form-urlencoded"
-}
-
-//
-// HTTP Test Handlers
-//
-
-// type handlerWithTemplate struct {
-// 	Username string
-// 	Name     string
-// 	Age      int `valid:"required"`
-//
-// 	ValidationErrors ValidationErrors
-// 	template         *template.Template
-// 	errorTemplate    *template.Template // Nil for some of the tests
-// }
-//
-// func (h handlerWithTemplate) ValidatedHTTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ValidationErrors *ValidationErrors) error {
-// 	return nil
-// }
-
-//
-// JSON response
-//
-
-type handlerWithoutTemplate struct {
-	Body struct {
-		Username string
-		Name     string
-		Age      int `valid:"required"`
-	}
-	Param struct {
-		Name string `valid:"alpha"`
-	}
-	// nojson bool // TODO
-}
-
-func (h handlerWithoutTemplate) ValidatedHTTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ValidationErrors ValidationErrors) error {
-	fmt.Printf("h.ValidationErrors: %+v\n", ValidationErrors)
-	fmt.Printf("h: %+v\n", h)
-	w.Write([]byte("Success"))
-	return nil
-}
-
-//
-// Error Handler
-//
-
-type handlerWithError struct {
-	Body struct {
-		Username string
-		Name     string
-		Age      int `valid:"required"`
-	}
-	errorTemplate *template.Template // Nil for some of the tests
-}
-
-func (h handlerWithError) ValidatedHTTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ValidationErrors ValidationErrors) error {
-	return errors.New("problem")
 }

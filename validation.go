@@ -26,7 +26,7 @@ type ValidationErrors map[string]string
 func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request, ps httprouter.Params) (err error, validation ValidationErrors) {
 
 	// if r.Header.Get("Content-Type") == "application/json" {
-	if hc.body {
+	if hc.body && r.Body != nil {
 
 		body := h.FieldByName(FieldBody)
 		b := body.Addr().Interface()
