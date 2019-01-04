@@ -13,9 +13,9 @@ type ValidationHandler interface {
 }
 
 // Check a struct/pointer contains a field marker
-func containsField(a interface{}, field string) (bool, error) {
-	return reflect.Indirect(reflect.ValueOf(a)).FieldByName(field).IsValid(), nil
-}
+// func containsField(a interface{}, field string) (bool, error) {
+// 	return reflect.Indirect(reflect.ValueOf(a)).FieldByName(field).IsValid(), nil
+// }
 
 // Validate a http.Handler providing JSON or HTML responses
 func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger) httprouter.Handle {
