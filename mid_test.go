@@ -41,7 +41,7 @@ type InputNewPost struct {
 // func ValidateMiddleware(h http.Handler, object interface{}) http.Handler {
 // v2
 
-func TestMiddleware(t *testing.T) {
+func TestValidationSuccess(t *testing.T) {
 
 	successResponse := "SUCCESS"
 
@@ -81,21 +81,16 @@ func TestMiddleware(t *testing.T) {
 
 	// v2, custom function
 	h := func(w http.ResponseWriter, r *http.Request, i interface{}) {
-		in := i.(*InputNewPost)
-		// if in, ok := i.(*InputNewPost); !ok {
-		// 	http.Error(w, "What???", http.StatusInternalServerError)
-		// 	return
+		// in := i.(*InputNewPost)
+		// e := json.NewEncoder(w)
+		// e.SetIndent("", "  ")
+		// err = e.Encode(in)
+		//
+		// if err != nil {
+		// 	http.Error(w, err.Error(), http.StatusInternalServerError)
 		// }
 
-		e := json.NewEncoder(w)
-		e.SetIndent("", "  ")
-		err = e.Encode(in)
-
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-
-		// w.Write([]byte(successResponse))
+		w.Write([]byte(successResponse))
 	}
 
 	// router := http.NewServeMux()
@@ -118,3 +113,62 @@ func TestMiddleware(t *testing.T) {
 	}
 
 }
+
+// func TestHandlers(t *testing.T) {
+//
+// 	requests := []struct {
+// 		Name       string
+// 		Data       interface{}
+// 		URL        string
+// 		Method     string
+// 		StatusCode int
+// 		Response   string
+// 		Handler    ValidationHandler
+// 	}{
+// 		{
+// 			Name:       "Handler With Params",
+// 			Data:       nil,
+// 			URL:        "/",
+// 			StatusCode: http.StatusInternalServerError,
+// 			Handler:    &handlerWithParams{},
+// 		},
+// 		{
+// 			Name:       "Handler With Error",
+// 			Data:       nil,
+// 			StatusCode: http.StatusInternalServerError,
+// 			Handler:    &handlerWithError{},
+// 		},
+// 	}
+//
+// 	for _, req := range requests {
+// 		t.Run(req.Name, func(t *testing.T) {
+// 			body, contentType := jsonBody(req.Data)
+//
+// 			method := "POST"
+// 			if req.Method != "" {
+// 				method = req.Method
+// 			}
+//
+// 			req, err := http.NewRequest(method, req.URL, body)
+// 			if err != nil {
+// 				t.Fatal(err)
+// 			}
+//
+// 			req.Header.Add("Content-Type", contentType)
+//
+// 			rr := httptest.NewRecorder()
+//
+// 			h := &handlerWithError{}
+//
+// 			router := httprouter.New()
+// 			router.POST("/hello/:Name", Validate(h, false, nil))
+// 			router.ServeHTTP(rr, req)
+//
+// 			if status := rr.Code; status != http.StatusInternalServerError {
+// 				t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusInternalServerError)
+// 				t.Error(rr.Body.String())
+// 			}
+// 		})
+// 	}
+//
+// }

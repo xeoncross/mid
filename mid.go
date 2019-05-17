@@ -7,54 +7,12 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// type ValidationHandler interface {
-// 	ValidatedHTTP(http.ResponseWriter, *http.Request, httprouter.Params, ValidationErrors) error
-// }
-
+// Handler for HTTP request/response and validated/populated struct pointer
 type Handler func(w http.ResponseWriter, r *http.Request, i interface{})
 
 // Check a struct/pointer contains a field marker
 // func containsField(a interface{}, field string) (bool, error) {
 // 	return reflect.Indirect(reflect.ValueOf(a)).FieldByName(field).IsValid(), nil
-// }
-
-// func ValidateMiddleware(h Handler, object interface{}) http.Handler {
-//
-// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-//
-// 		// Clone struct (avoids race conditions)
-// 		objectElem := reflect.TypeOf(object).Elem()
-// 		o := reflect.New(objectElem).Elem()
-//
-// 		var err error
-//
-// 		err = json.NewDecoder(r.Body).Decode(o.Addr().Interface())
-// 		if err != nil {
-// 			http.Error(w, err.Error(), http.StatusInternalServerError)
-// 			return
-// 		}
-//
-// 		var isValid bool
-// 		isValid, err = govalidator.ValidateStruct(o.Addr().Interface())
-//
-// 		// if err != nil {
-// 		// 	http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		// 	return
-// 		// }
-//
-// 		if !isValid {
-// 			validation := govalidator.ErrorsByField(err)
-// 			http.Error(w, err.Error(), http.StatusInternalServerError)
-// 			fmt.Println(validation)
-// 			return
-// 		}
-//
-// 		// v1
-// 		// h.ServeHTTP(w, r)
-//
-// 		// v2
-// 		h(w, r, o.Addr().Interface())
-// 	})
 // }
 
 // Validate a http.Handler providing JSON or HTML responses
@@ -64,8 +22,10 @@ func Validate(h Handler, object interface{}) httprouter.Handle {
 	// the handler. If the "nojson" marker is set on the handler, we instead
 	// call the handler passing the validation results.
 
+	objectElem := reflect.TypeOf(object).Elem()
+
 	sc := structContext{}
-	sc.checkRequestFields(reflect.TypeOf(object).Elem())
+	sc.checkRequestFields(objectElem)
 
 	// For each field that is notzero(), we need to add it to a slice so we can
 	// populate it with the value of the original handler below
@@ -81,7 +41,6 @@ func Validate(h Handler, object interface{}) httprouter.Handle {
 		// }
 
 		// Clone struct (avoids race conditions)
-		objectElem := reflect.TypeOf(object).Elem()
 		o := reflect.New(objectElem).Elem()
 
 		// Validate and populate the object
@@ -108,11 +67,10 @@ func Validate(h Handler, object interface{}) httprouter.Handle {
 		// Call handler now
 		h(w, r, o.Addr().Interface())
 
-		// TODO: Do we want to support returning errors?
+		// TODO: Do we want to support handlers returning errors?
 		// if err != nil {
 		// 	http.Error(w, err.Error(), http.StatusInternalServerError)
 		// }
-
 	}
 }
 

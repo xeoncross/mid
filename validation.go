@@ -2,7 +2,6 @@ package mid
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"reflect"
 
@@ -26,6 +25,7 @@ type ValidationErrors map[string]string
 // ValidateStruct provided returning a ValidationErrors or error
 func ValidateStruct(h reflect.Value, sc structContext, r *http.Request, ps httprouter.Params) (err error, validation ValidationErrors) {
 
+	// We don't care what the client says, the boss wants JSON
 	// if r.Header.Get("Content-Type") == "application/json" {
 	if sc.body && r.Body != nil {
 
@@ -33,7 +33,7 @@ func ValidateStruct(h reflect.Value, sc structContext, r *http.Request, ps httpr
 		b := body.Addr().Interface()
 
 		err = json.NewDecoder(r.Body).Decode(b)
-		fmt.Printf("Decoded JSON: %+v\n", b)
+		// fmt.Printf("Decoded JSON: %+v\n", b)
 
 		if err != nil {
 			// We don't care about type errors

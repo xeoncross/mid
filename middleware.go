@@ -32,8 +32,7 @@ func Throttler(n int) func(http.Handler) http.Handler {
 }
 
 // MaxRequestBody limits the request body size.
-// Go does this internally if not specified, but setting it here prevents Go from changing it
-// default is 10MB: https://golang.org/src/net/http/request.go#L1136
+// Go does this internally (10MB) if not specified: https://golang.org/src/net/http/request.go#L1136
 func MaxBodySize(h http.Handler, n int64) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, n)
