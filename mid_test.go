@@ -1,6 +1,9 @@
 package mid
 
 import (
+	"bytes"
+	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,295 +11,110 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-func TestHandlerWithError(t *testing.T) {
+// What if, instead of setting the handler as the struct we duplicate/populate
+// we create a middleware that passes the correct object if everything succeds?
+// This would mean you could still create http.Handler's as you see fit, but
+// passing this middleware would seem simpler..?
+//
+// router.GET('/', ValidateMiddleware(handlers.NewPost, &NewPost{}))
 
-	req, err := http.NewRequest("GET", "/", nil)
-	if err != nil {
-		t.Fatal(err)
+// InputNewPost defines the POST params we want
+type InputNewPost struct {
+	Body struct {
+		Title   string `valid:"alphanum,required"`
+		Email   string `valid:"email,required"`
+		Message string `valid:"ascii,required"`
+		Date    string `valid:"-"`
 	}
-
-	rr := httptest.NewRecorder()
-
-	h := &handlerWithError{}
-
-	router := httprouter.New()
-	router.GET("/", Validate(h, false, nil))
-	router.ServeHTTP(rr, req)
-
-	if status := rr.Code; status != http.StatusInternalServerError {
-		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusInternalServerError)
-		t.Error(rr.Body.String())
-	}
-
-	if rr.Body.String() != "Handler Error\n" {
-		t.Error("handler returned wrong error:", rr.Body.String())
-	}
-
 }
 
-func TestHandlerWithErrorValidation(t *testing.T) {
+// Alternative: https://stackoverflow.com/a/29169727/99923
+// func clear(v interface{}) {
+//     p := reflect.ValueOf(v).Elem()
+//     p.Set(reflect.Zero(p.Type()))
+// }
 
-	req, err := http.NewRequest("GET", "/0", nil)
+// type MyHandler func(w http.ResponseWriter, r *http.Request, i interface{})
+
+// ValidateMiddleware requires object be a struct pointer!
+// v1
+// func ValidateMiddleware(h http.Handler, object interface{}) http.Handler {
+// v2
+
+func TestMiddleware(t *testing.T) {
+
+	successResponse := "SUCCESS"
+
+	data := InputNewPost{
+		Body: struct {
+			Title   string `valid:"alphanum,required"`
+			Email   string `valid:"email,required"`
+			Message string `valid:"ascii,required"`
+			Date    string `valid:"-"`
+		}{
+			Title:   "FooBar",
+			Email:   "email@example.com",
+			Message: "Hello there",
+			Date:    "yes",
+		},
+	}
+
+	// Notice, we send the data without the {Body: ...} wrapper
+	b, err := json.Marshal(data.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	req, err := http.NewRequest("POST", "/", bytes.NewReader(b))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	rr := httptest.NewRecorder()
-
-	h := &handlerWithError{}
-
-	router := httprouter.New()
-	router.GET("/:Name", Validate(h, false, nil))
-	router.ServeHTTP(rr, req)
-
-	if status := rr.Code; status != http.StatusOK {
-		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
-		t.Error(rr.Body.String())
-	}
-
-	if rr.Body.String() != `{"Fields":{"Name":"0 does not validate as alpha"}}`+"\n" {
-		t.Error("handler returned wrong error:", rr.Body.String())
-	}
-
-}
-
-// func TestHandlerWithError(t *testing.T) {
-//
-// 	data := struct {
-// 		Username string
-// 		Age      int
-// 		template string
-// 	}{Username: "John", Age: 10, template: "foo"}
-//
-// 	body, contentType := jsonBody(data)
-//
-// 	req, err := http.NewRequest("POST", "/hello/John", body)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-//
-// 	req.Header.Add("Content-Type", contentType)
-//
-// 	rr := httptest.NewRecorder()
-//
-// 	h := &handlerWithError{}
-//
-// 	router := httprouter.New()
-// 	router.POST("/hello/:Name", Validate(h, false, nil))
-// 	router.ServeHTTP(rr, req)
-//
-// 	if status := rr.Code; status != http.StatusInternalServerError {
-// 		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusInternalServerError)
-// 		t.Error(rr.Body.String())
-// 	}
-//
-// }
-
-// func TestPassTemplateValidationJSON(t *testing.T) {
-//
-// 	data := struct {
-// 		Username string
-// 		Age      int
-// 		template string
-// 	}{Username: "John", Age: 10, template: "foo"}
-//
-// 	body, contentType := jsonBody(data)
-//
-// 	req, err := http.NewRequest("POST", "/hello/John", body)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-//
-// 	req.Header.Add("Content-Type", contentType)
-//
-// 	rr := httptest.NewRecorder()
-//
-// 	h := &handlerWithTemplate{template: dumpTemplate}
-//
-// 	router := httprouter.New()
-// 	router.POST("/hello/:Name", Validate(h, false, nil))
-// 	router.ServeHTTP(rr, req)
-//
-// 	// var tpl bytes.Buffer
-// 	// if err := h.Template.Execute(&tpl, data); err != nil {
-// 	// 	t.Error(err)
-// 	// }
-// 	//
-// 	// fmt.Println(rr.Body.String())
-// 	// fmt.Println(tpl.String())
-//
-// 	if status := rr.Code; status != http.StatusOK {
-// 		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
-// 		t.Error(rr.Body.String())
-// 	}
-//
-// }
-
-func TestFailTemplateValidationJSON(t *testing.T) {
-
-	data := struct {
-		Username string
-		Age      []string
-		template string
-	}{Username: "John342", Age: []string{"foo"}, template: "foo"}
-
-	body, contentType := jsonBody(data)
-
-	req, err := http.NewRequest("POST", "/hello/John", body)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	req.Header.Add("Content-Type", contentType)
+	req.Header.Add("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
 
-	h := &handlerWithoutTemplate{}
+	// v1 plain HTTP handler wrapping
+	// h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// 	w.Write([]byte(successResponse))
+	// })
+
+	// v2, custom function
+	h := func(w http.ResponseWriter, r *http.Request, i interface{}) {
+		in := i.(*InputNewPost)
+		// if in, ok := i.(*InputNewPost); !ok {
+		// 	http.Error(w, "What???", http.StatusInternalServerError)
+		// 	return
+		// }
+
+		e := json.NewEncoder(w)
+		e.SetIndent("", "  ")
+		err = e.Encode(in)
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+
+		// w.Write([]byte(successResponse))
+	}
+
+	// router := http.NewServeMux()
+	// router.Handle("/", Validate(h, &InputNewPost{}))
 
 	router := httprouter.New()
-	router.POST("/hello/:Name", Validate(h, false, nil))
+	router.POST("/", Validate(h, &InputNewPost{}))
+
 	router.ServeHTTP(rr, req)
 
 	got := rr.Body.String()
-	want := `{"Fields":{"Age":"non zero value required"}}` + "\n"
 
 	if status := rr.Code; status != http.StatusOK {
 		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
 		t.Error(rr.Body.String())
 	}
 
-	if got != want {
-		t.Errorf("handler returned wrong body:\n\tgot:  %s\n\twant: %s", got, want)
+	if got != successResponse {
+		t.Errorf("handler returned wrong body:\n\tgot:  %s\n\twant: %s", got, successResponse)
 	}
 
 }
-
-// func TestPassTemplateValidationForm(t *testing.T) {
-// 	data := &url.Values{}
-// 	data.Add("Username", "John")
-// 	data.Add("Age", "10")
-// 	data.Add("template", "foo")
-//
-// 	body, contentType := formBody(data)
-//
-// 	req, err := http.NewRequest("POST", "/hello/John", body)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-//
-// 	req.Header.Add("Content-Type", contentType)
-//
-// 	rr := httptest.NewRecorder()
-//
-// 	h := &handlerWithTemplate{template: dumpTemplate}
-//
-// 	router := httprouter.New()
-// 	router.POST("/hello/:Name", Validate(h, false, nil))
-// 	router.ServeHTTP(rr, req)
-//
-// 	// fmt.Println(rr.Body.String())
-//
-// 	if status := rr.Code; status != http.StatusOK {
-// 		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
-// 		t.Error(rr.Body.String())
-// 	}
-// }
-
-// Fail validation and load template
-// func TestFailTemplateValidationForm(t *testing.T) {
-// 	data := &url.Values{}
-// 	data.Add("Username", "John")
-// 	data.Add("Age", "a")
-// 	data.Add("template", "foo")
-//
-// 	body, contentType := formBody(data)
-//
-// 	req, err := http.NewRequest("POST", "/hello/John", body)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-//
-// 	req.Header.Add("Content-Type", contentType)
-//
-// 	rr := httptest.NewRecorder()
-//
-// 	h := &handlerWithTemplate{
-// 		template:      dumpTemplate,
-// 		errorTemplate: errorTemplate,
-// 	}
-//
-// 	router := httprouter.New()
-// 	router.POST("/hello/:Name", Validate(h, false, nil))
-// 	router.ServeHTTP(rr, req)
-//
-// 	want := `dump: &mid.ValidationErrors{Fields:map[string]string{"Age":"non zero value required"}}`
-// 	got := rr.Body.String()
-//
-// 	if status := rr.Code; status != http.StatusBadRequest {
-// 		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusBadRequest)
-// 		// t.Error(rr.Body.String())
-// 	}
-//
-// 	if got != want {
-// 		t.Errorf("handler returned wrong body:\n\tgot:  %v\n\twant: %v", got, want)
-// 	}
-// }
-
-// func TestHandlers(t *testing.T) {
-//
-// 	requests := []struct {
-// 		Name       string
-// 		Data       interface{}
-// 		URL        string
-// 		Method     string
-// 		StatusCode int
-// 		Response   string
-// 		Handler    ValidationHandler
-// 	}{
-// 		{
-// 			Name:       "Handler With Params",
-// 			Data:       nil,
-// 			URL:        "/",
-// 			StatusCode: http.StatusInternalServerError,
-// 			Handler:    &handlerWithParams{},
-// 		},
-// 		{
-// 			Name:       "Handler With Error",
-// 			Data:       nil,
-// 			StatusCode: http.StatusInternalServerError,
-// 			Handler:    &handlerWithError{},
-// 		},
-// 	}
-//
-// 	for _, req := range requests {
-// 		t.Run(req.Name, func(t *testing.T) {
-// 			body, contentType := jsonBody(req.Data)
-//
-// 			method := "POST"
-// 			if req.Method != "" {
-// 				method = req.Method
-// 			}
-//
-// 			req, err := http.NewRequest(method, req.URL, body)
-// 			if err != nil {
-// 				t.Fatal(err)
-// 			}
-//
-// 			req.Header.Add("Content-Type", contentType)
-//
-// 			rr := httptest.NewRecorder()
-//
-// 			h := &handlerWithError{}
-//
-// 			router := httprouter.New()
-// 			router.POST("/hello/:Name", Validate(h, false, nil))
-// 			router.ServeHTTP(rr, req)
-//
-// 			if status := rr.Code; status != http.StatusInternalServerError {
-// 				t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusInternalServerError)
-// 				t.Error(rr.Body.String())
-// 			}
-// 		})
-// 	}
-//
-// }

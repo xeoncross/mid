@@ -2,6 +2,7 @@ package mid
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"reflect"
 
@@ -23,16 +24,16 @@ type ValidationErrors map[string]string
 // }
 
 // ValidateStruct provided returning a ValidationErrors or error
-func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request, ps httprouter.Params) (err error, validation ValidationErrors) {
+func ValidateStruct(h reflect.Value, sc structContext, r *http.Request, ps httprouter.Params) (err error, validation ValidationErrors) {
 
 	// if r.Header.Get("Content-Type") == "application/json" {
-	if hc.body && r.Body != nil {
+	if sc.body && r.Body != nil {
 
 		body := h.FieldByName(FieldBody)
 		b := body.Addr().Interface()
 
 		err = json.NewDecoder(r.Body).Decode(b)
-		// fmt.Printf("Decoded JSON: %+v\n", b)
+		fmt.Printf("Decoded JSON: %+v\n", b)
 
 		if err != nil {
 			// We don't care about type errors
@@ -55,7 +56,7 @@ func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request, ps http
 			}
 		}
 
-	} else if hc.form { // GET or application/x-www-form-urlencoded
+	} else if sc.form { // GET or application/x-www-form-urlencoded
 
 		form := h.FieldByName(FieldForm)
 		f := form.Addr().Interface()
@@ -88,7 +89,7 @@ func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request, ps http
 	}
 
 	// Query params?
-	if hc.query {
+	if sc.query {
 		query := h.FieldByName(FieldQuery)
 		queryType := query.Type()
 
@@ -109,7 +110,7 @@ func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request, ps http
 		}
 	}
 
-	if hc.param {
+	if sc.param {
 		param := h.FieldByName(FieldParameter)
 		paramType := param.Type()
 

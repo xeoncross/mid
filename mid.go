@@ -1,31 +1,71 @@
 package mid
 
 import (
-	"log"
 	"net/http"
 	"reflect"
 
 	"github.com/julienschmidt/httprouter"
 )
 
-type ValidationHandler interface {
-	ValidatedHTTP(http.ResponseWriter, *http.Request, httprouter.Params, ValidationErrors) error
-}
+// type ValidationHandler interface {
+// 	ValidatedHTTP(http.ResponseWriter, *http.Request, httprouter.Params, ValidationErrors) error
+// }
+
+type Handler func(w http.ResponseWriter, r *http.Request, i interface{})
 
 // Check a struct/pointer contains a field marker
 // func containsField(a interface{}, field string) (bool, error) {
 // 	return reflect.Indirect(reflect.ValueOf(a)).FieldByName(field).IsValid(), nil
 // }
 
+// func ValidateMiddleware(h Handler, object interface{}) http.Handler {
+//
+// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+//
+// 		// Clone struct (avoids race conditions)
+// 		objectElem := reflect.TypeOf(object).Elem()
+// 		o := reflect.New(objectElem).Elem()
+//
+// 		var err error
+//
+// 		err = json.NewDecoder(r.Body).Decode(o.Addr().Interface())
+// 		if err != nil {
+// 			http.Error(w, err.Error(), http.StatusInternalServerError)
+// 			return
+// 		}
+//
+// 		var isValid bool
+// 		isValid, err = govalidator.ValidateStruct(o.Addr().Interface())
+//
+// 		// if err != nil {
+// 		// 	http.Error(w, err.Error(), http.StatusInternalServerError)
+// 		// 	return
+// 		// }
+//
+// 		if !isValid {
+// 			validation := govalidator.ErrorsByField(err)
+// 			http.Error(w, err.Error(), http.StatusInternalServerError)
+// 			fmt.Println(validation)
+// 			return
+// 		}
+//
+// 		// v1
+// 		// h.ServeHTTP(w, r)
+//
+// 		// v2
+// 		h(w, r, o.Addr().Interface())
+// 	})
+// }
+
 // Validate a http.Handler providing JSON or HTML responses
-func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger) httprouter.Handle {
+func Validate(h Handler, object interface{}) httprouter.Handle {
 
 	// By default, we return JSON on validation errors and skip calling
 	// the handler. If the "nojson" marker is set on the handler, we instead
 	// call the handler passing the validation results.
 
-	hc := handlerContext{}
-	hc.checkRequestFields(reflect.TypeOf(handler).Elem())
+	sc := structContext{}
+	sc.checkRequestFields(reflect.TypeOf(object).Elem())
 
 	// For each field that is notzero(), we need to add it to a slice so we can
 	// populate it with the value of the original handler below
@@ -40,16 +80,13 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 		// 	panic(err)
 		// }
 
-		// Clone handler (avoids race conditions)
-		// h := reflect.New(reflect.TypeOf(handler).Elem()).Interface()
-		handlerElem := reflect.TypeOf(handler).Elem()
-		h := reflect.New(handlerElem).Elem()
+		// Clone struct (avoids race conditions)
+		objectElem := reflect.TypeOf(object).Elem()
+		o := reflect.New(objectElem).Elem()
 
-		// TODO foreach nonzero-field() above, we need to set it's value here
-		// Dependency Injection
-
+		// Validate and populate the object
 		var validation ValidationErrors
-		err, validation = ValidateStruct(h, hc, r, ps)
+		err, validation = ValidateStruct(o, sc, r, ps)
 
 		// The error had to do with parsing the request body or content length
 		if err != nil {
@@ -58,7 +95,7 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 		}
 
 		// If not prohibited, send validation errors without calling handler
-		if hc.nojson == false && len(validation) != 0 {
+		if sc.sendjson && len(validation) != 0 {
 			_, err = JSON(w, 200, struct {
 				Fields ValidationErrors `json:"Fields"`
 			}{Fields: validation})
@@ -68,22 +105,13 @@ func Validate(handler ValidationHandler, displayErrors bool, logger *log.Logger)
 			return
 		}
 
-		// Call our handler
-		res := h.MethodByName("ValidatedHTTP").Call([]reflect.Value{
-			reflect.ValueOf(w),
-			reflect.ValueOf(r),
-			reflect.ValueOf(ps),
-			reflect.ValueOf(validation),
-		})
+		// Call handler now
+		h(w, r, o.Addr().Interface())
 
-		// TODO: do we want to handle errors or remove them from the signature?
-
-		// Returned type MUST be error due to function signature
-		err, _ = res[0].Interface().(error)
-
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+		// TODO: Do we want to support returning errors?
+		// if err != nil {
+		// 	http.Error(w, err.Error(), http.StatusInternalServerError)
+		// }
 
 	}
 }
