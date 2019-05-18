@@ -55,7 +55,7 @@ func Validate(h Handler, object interface{}) httprouter.Handle {
 
 		// If not prohibited, send validation errors without calling handler
 		if sc.sendjson && len(validation) != 0 {
-			_, err = JSON(w, 200, struct {
+			_, err = JSON(w, http.StatusBadRequest, struct {
 				Fields ValidationErrors `json:"Fields"`
 			}{Fields: validation})
 			if err != nil {
