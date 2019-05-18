@@ -10,7 +10,7 @@ import (
 	"github.com/xeoncross/mid"
 )
 
-type MidHandler struct {
+type MidInput struct {
 	Username string
 	Name     string
 	Age      int `valid:"required"`
@@ -18,20 +18,15 @@ type MidHandler struct {
 	Template *template.Template
 }
 
-func (m MidHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, validationErrors mid.ValidationErrors) error {
-
-	if len(validationErrors) == 0 {
-		return nil
-	}
-
-	return nil
+func midHandler(w http.ResponseWriter, r *http.Request, in interface{}) {
+	// Nothing really
 }
 
 func BenchmarkMid(b *testing.B) {
 
 	rr := httptest.NewRecorder()
 	router := httprouter.New()
-	router.POST("/hello/:Name", mid.Validate(&MidHandler{}, false, nil))
+	router.POST("/hello/:Name", mid.Validate(midHandler, &MidInput{}))
 
 	data := struct {
 		Username string
