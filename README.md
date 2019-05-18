@@ -1,141 +1,79 @@
 # mid
 
-Simple Go HTTP middleware for reducing code substantially when building a web app.
+Simple Go HTTP middleware for reducing code substantially when building a web app. Simply tell mid what type of struct you are expecting (and how the client should send it) and it will only call your handler if the validation for that struct passes.
 
-- `net/http` compatible.
-- Biggest feature is automatic input validation.
-- No framework lock-in
+```
+// Post is one of your app entities with validation defined
+type Post struct {
+	Title   string `valid:"alphanum,required"`
+	Message string `valid:"ascii,required"`
+}
+
+// PostInput defines where we should look for the Post object (a HTTP Form)
+type PostInput struct {
+	Form Post
+}
+// Other options include: Param, Query, and Body (JSON payloads)
+
+// You can also combine everything if you don't have an existing domain entity
+// type Post struct {
+// 	Form struct {
+//   	Title   string `valid:"alphanum,required"`
+//   	Message string `valid:"ascii,required"`
+//   }
+// }
+
+
+router := httprouter.New()
+router.POST("/validate", mid.Validate(handlers.validateHandler, &PostInput{}))
+```
 
 See the [examples](https://github.com/Xeoncross/mid/tree/master/examples).
 
-###Warning
 
-This is alpha quality software. The unit tests aren't finished and the API might change.
+## Warning
+
+This is beta quality software. The API might change.
+
 
 ## Why?
 
-Most middleware libraries solve easy problems like error recovery and logging. I wanted something that would help me validate user input, return JSON/gRPC responses, and other common tasks.
+I really don't like typing the same HTTP handler validation logic over-and-over. This library provides automatic user input processing/validation and population of my domain objects. Better than echo.Bind, Gongular, or any other libraries I looked at over the last year.
 
-### Mid is
+Any invalid requests will receive a JSON response stating which fields have invalid values. If you want to handle the response yourself, you can set a special `nojson bool` property on your struct.
 
-- Fast
-- Simple
-- DRY ([Don't repeat yourself](https://en.wikipedia.org/wiki/Don%27t_repeat_yourself))
-- Compatible with the big three http routers/multiplexers:
-  - `net/http`
-  - https://github.com/gorilla/mux (TODO)
-  - https://github.com/julienschmidt/httprouter
 
-## Usage
+## Supported Validations
 
-You create a handler which has struct properties that match the parameters you are expecting. These values can be form fields, JSON bodies, or URL params.
+https://github.com/asaskevich/govalidator#list-of-functions
 
-```
-type MyHandler struct {
-	Body struct {
-		Bio string
-		Age int `valid:"required"`
-	}
-	Param struct {
-		Name string `valid:"alpha"`
-	}
-}
-
-func (h MyHandler) ValidatedHTTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ValidationErrors ValidationErrors) error {
-	fmt.Printf("Validation Errors: %+v\n", ValidationErrors)
-	fmt.Printf("Populated Handler: %+v\n", h)
-	return nil
-}
-```
-
-Then you ask Mid to validate all requests so that only ones matching the values + rules of the handlers run the handler. In the route below, we expect a `HTTP POST` request to the URL path `/hello/[alpha]` with the two values `Bio` and `Age` either sent as `multipart/form-data` or an `application/json` body.
-
-```
-router := httprouter.New()
-router.POST("/hello/:Name", Validate(&MyHandler{}, false, nil))
-```
-
-Any invalid requests will receive a JSON response stating which fields have invalid values. If you want to handle the response yourself, you can set a special `nojson bool` property on your handler struct.
-
-# Templates
-
-Please use https://github.com/Xeoncross/got - a minimal wrapper to improve Go `html/template` usage with no loss of speed.
 
 # Benchmarks
 
-The performance of Mid is almost twice of that of Gongular. However, part of this is that Gongular is a full framework (lots of extra wrappers and allocs). Mid is simply a chainable middleware, trying to stay out of the way.
-
-One big feature (incomplete in mid) is dependency injection.
+The performance of Mid is almost twice of that of Gongular. However, part of this is that Gongular is a full framework (lots of extra wrappers and allocs). Mid is simply a chainable middleware, trying to stay out of the way. Gongular's approach is more clunky trying to take over the http.Handler while still preserving it's dependencies. This causes extra delay for each request.
 
 ```
 $ go test --bench=. --benchmem
 goos: darwin
 goarch: amd64
 pkg: github.com/Xeoncross/mid/benchmarks
-BenchmarkGongular-8   	  200000	      7481 ns/op	    7332 B/op	      60 allocs/op
-BenchmarkMid-8        	  300000	      4363 ns/op	    2568 B/op	      38 allocs/op
-BenchmarkVanilla-8    	 3000000	       460 ns/op	      64 B/op	       6 allocs/op
+BenchmarkGongular-8   	  200000	      7494 ns/op	    7062 B/op	      61 allocs/op
+BenchmarkMid-8        	  500000	      3390 ns/op	    2227 B/op	      32 allocs/op
+BenchmarkVanilla-8    	 2000000	       633 ns/op	     160 B/op	      12 allocs/op
 ```
 
-# Background
 
-[Gongular](github.com/mustafaakin/gongular) is a neat framework that handles input validation and DI for the http.Handler. However, they don't support HTTP templates. It also adds noticeable overhead.
+# Templates
 
-My goals were:
-
- - to simplify the code
- - increase performance
- - support non-JSON response bodies (especially `html/template`)
-
-## Inspiration
-
-Originally, I wanted to add template support to gongular. However, this idea seems to be a flop unless we assume:
-
-1. a non-javascript site
-2. only apply validation if a POST/PUT/DELETE request.
-3. Avoid auto-loading templates
-
-The original idea of a single handler that returns JSON or HTML depending on if
-a `template.Template` is set doesn't make much sense.
-
-- Endpoints should be JSON only not rendering pages (Modern web apps).
-- HTML pages that don't use AJAX need to run the handler again, so mid can't provide
-  any kind of short cut.
-
-Originally I was going to have any request that does not contain all required data
-bypass the handler and return the errors.
-
-For HTML pages this meant skipping straight to loading the template. However,
-the template often relies on data provided by the handler, so it is not very
-useful to skip that part.
-
-Consider a form that needs to be rendered on first load + some select lists or
-other data provided by the handler. Validation only applies on a subsequent POST
-request, but we would still need the extra data provided by the handler.
-
-## Solution
-
-Validation defaults to returning JSON objects on failure (never calling the
-handler). However, if a `NOJSON` function/property is defined on the struct then
-we call the handler providing the results of the validation and let it run
-normally.
-
-This allows handlers to render XML, templates, or anything else along with the
-pre-validated input information.
-
-## TODO
-
-Need to make the validation handler re-attach any struct properties that contain
-non-zero values. This is so you can set database handles or other things on the
-handler and have them passed onto the new copy when the handler is cloned.
+Please use https://github.com/Xeoncross/got - a minimal wrapper to improve Go `html/template` usage with no loss of speed.
 
 
 ## Alternative Method(s)
 
-Rather than making the handler into the validation schema, you can also use a separate struct for the validation mapping so that multiple handlers can share. The downside is more typing and structs for _possible_ code resuse. Separation could ideal so this might be a superior method.
+This library is basically the best of both two approaches: a separate struct, which is self-describing and automatically validated before calling the handler.
 
-- https://github.com/mholt/binding
-
+- http://github.com/mustafaakin/gongular: The handler _is_ the validation schema
+- https://github.com/mholt/binding: separate struct for the validation mapping so that multiple handlers can share. Requires wiring and repeated binding configuration for each struct.
 
 
 ## Related Projects

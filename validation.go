@@ -23,10 +23,11 @@ type ValidationErrors map[string]string
 // }
 
 // ValidateStruct provided returning a ValidationErrors or error
-func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request, ps httprouter.Params) (err error, validation ValidationErrors) {
+func ValidateStruct(h reflect.Value, sc structContext, r *http.Request, ps httprouter.Params) (err error, validation ValidationErrors) {
 
+	// We don't care what the client says, the boss wants JSON
 	// if r.Header.Get("Content-Type") == "application/json" {
-	if hc.body && r.Body != nil {
+	if sc.body && r.Body != nil {
 
 		body := h.FieldByName(FieldBody)
 		b := body.Addr().Interface()
@@ -55,7 +56,9 @@ func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request, ps http
 			}
 		}
 
-	} else if hc.form { // GET or application/x-www-form-urlencoded
+	} else if sc.form {
+
+		// fmt.Printf("Form Context: %+v\n", sc)
 
 		form := h.FieldByName(FieldForm)
 		f := form.Addr().Interface()
@@ -69,8 +72,11 @@ func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request, ps http
 				return
 			}
 		} else {
+			// application/x-www-form-urlencoded
 			r.ParseForm()
 		}
+
+		// fmt.Printf("Decoded Form: %+v\n", r.Form)
 
 		// 1. Try to insert form data into the struct
 		decoder := schema.NewDecoder()
@@ -85,10 +91,12 @@ func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request, ps http
 		// gorilla/schema errors share application handler structure which is
 		// not safe for us, nor helpful to our clients
 		decoder.Decode(f, r.Form)
+
+		// fmt.Printf("Decoded Object: %v\n", f)
 	}
 
 	// Query params?
-	if hc.query {
+	if sc.query {
 		query := h.FieldByName(FieldQuery)
 		queryType := query.Type()
 
@@ -109,7 +117,7 @@ func ValidateStruct(h reflect.Value, hc handlerContext, r *http.Request, ps http
 		}
 	}
 
-	if hc.param {
+	if sc.param {
 		param := h.FieldByName(FieldParameter)
 		paramType := param.Type()
 

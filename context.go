@@ -4,6 +4,9 @@ import (
 	"reflect"
 )
 
+// Figure out what properties exist for population on a struct and cache that
+// information for all future requests.
+
 const (
 	// FieldParameter defines the struct field name for looking up URL Parameters
 	FieldParameter = "Param"
@@ -19,29 +22,29 @@ const (
 	TagQuery = "q"
 )
 
-type handlerContext struct {
-	param  bool
-	query  bool
-	body   bool
-	form   bool
-	nojson bool
+type structContext struct {
+	param    bool
+	query    bool
+	body     bool
+	form     bool
+	sendjson bool
 }
 
-func (hc *handlerContext) checkRequestFields(handlerElem reflect.Type) {
+func (sc *structContext) checkRequestFields(structType reflect.Type) {
 	var ok bool
-	if _, ok = handlerElem.FieldByName(FieldParameter); ok {
-		hc.param = true
+	if _, ok = structType.FieldByName(FieldParameter); ok {
+		sc.param = true
 	}
-	if _, ok = handlerElem.FieldByName(FieldBody); ok {
-		hc.body = true
+	if _, ok = structType.FieldByName(FieldBody); ok {
+		sc.body = true
 	}
-	if _, ok = handlerElem.FieldByName(FieldForm); ok {
-		hc.form = true
+	if _, ok = structType.FieldByName(FieldForm); ok {
+		sc.form = true
 	}
-	if _, ok = handlerElem.FieldByName(FieldQuery); ok {
-		hc.query = true
+	if _, ok = structType.FieldByName(FieldQuery); ok {
+		sc.query = true
 	}
-	if _, ok = handlerElem.FieldByName(FieldNoJSON); ok {
-		hc.nojson = true
+	if _, ok = structType.FieldByName(FieldNoJSON); !ok {
+		sc.sendjson = true
 	}
 }
