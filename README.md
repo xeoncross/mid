@@ -1,6 +1,6 @@
 # mid
 
-Simple Go HTTP middleware for reducing code substantially when building a web app. Simple tell mid what type of struct you are expecting (and how the client should send it) and it will only call your handler if the validation for that struct passes.
+Simple Go HTTP middleware for reducing code substantially when building a web app. Simply tell mid what type of struct you are expecting (and how the client should send it) and it will only call your handler if the validation for that struct passes.
 
 ```
 // Post is one of your app entities with validation defined
@@ -30,9 +30,11 @@ router.POST("/validate", mid.Validate(handlers.validateHandler, &PostInput{}))
 
 See the [examples](https://github.com/Xeoncross/mid/tree/master/examples).
 
+
 ## Warning
 
 This is beta quality software. The API might change.
+
 
 ## Why?
 
@@ -40,9 +42,11 @@ I really don't like typing the same HTTP handler validation logic over-and-over.
 
 Any invalid requests will receive a JSON response stating which fields have invalid values. If you want to handle the response yourself, you can set a special `nojson bool` property on your struct.
 
-# Templates
 
-Please use https://github.com/Xeoncross/got - a minimal wrapper to improve Go `html/template` usage with no loss of speed.
+## Supported Validations
+
+https://github.com/asaskevich/govalidator#list-of-functions
+
 
 # Benchmarks
 
@@ -57,6 +61,12 @@ BenchmarkGongular-8   	  200000	      7494 ns/op	    7062 B/op	      61 allocs/o
 BenchmarkMid-8        	  500000	      3390 ns/op	    2227 B/op	      32 allocs/op
 BenchmarkVanilla-8    	 2000000	       633 ns/op	     160 B/op	      12 allocs/op
 ```
+
+
+# Templates
+
+Please use https://github.com/Xeoncross/got - a minimal wrapper to improve Go `html/template` usage with no loss of speed.
+
 
 ## Alternative Method(s)
 
