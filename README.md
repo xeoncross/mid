@@ -50,17 +50,22 @@ https://github.com/asaskevich/govalidator#list-of-functions
 
 # Benchmarks
 
-The performance of Mid is almost twice of that of Gongular. However, part of this is that Gongular is a full framework (lots of extra wrappers and allocs). Mid is simply a chainable middleware, trying to stay out of the way. Gongular's approach is more clunky trying to take over the http.Handler while still preserving it's dependencies. This causes extra delay for each request.
-
 ```
 $ go test --bench=. --benchmem
 goos: darwin
 goarch: amd64
 pkg: github.com/Xeoncross/mid/benchmarks
-BenchmarkGongular-8   	  200000	      7494 ns/op	    7062 B/op	      61 allocs/op
-BenchmarkMid-8        	  500000	      3390 ns/op	    2227 B/op	      32 allocs/op
-BenchmarkVanilla-8    	 2000000	       633 ns/op	     160 B/op	      12 allocs/op
+BenchmarkEcho-8       	  200000	      7901 ns/op	    3715 B/op	      39 allocs/op
+BenchmarkGongular-8   	  100000	     19869 ns/op	    6565 B/op	      76 allocs/op
+BenchmarkMid-8        	  100000	     19448 ns/op	    5620 B/op	      68 allocs/op
+BenchmarkVanilla-8    	 2000000	       985 ns/op	     288 B/op	      17 allocs/op
 ```
+
+Notes:
+
+Gongular is slower in these benchmarks because 1) it's a full framework with extra request wrapping code and 2) calculations and allocs that go into handling dependency injection in a way mid is able to avoid completely by keeping the handler separate from the binding object.
+
+Echo is clearly the fastest, and also requires writing the most code. Unlike the other two, the echo benchmark does not include URL parameter binding giving it a slight boost. I'm worried I also missed something else giving it such a clear advantage.
 
 
 # Templates

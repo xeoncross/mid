@@ -1,7 +1,6 @@
 package main
 
 import (
-	"net/http"
 	"reflect"
 	"testing"
 )
@@ -10,13 +9,7 @@ import (
  * TODO: Not really related to our test, just iterating over reflected values
  */
 
-type Foo struct {
-	FirstName string `tag_name:"tag 1"`
-	LastName  string `tag_name:"tag 2"`
-	Age       int    `tag_name:"tag 3"`
-}
-
-func parse(f interface{}, r *http.Request) {
+func parse(f interface{}) {
 	val := reflect.ValueOf(f).Elem()
 
 	for i := 0; i < val.NumField(); i++ {
@@ -25,19 +18,19 @@ func parse(f interface{}, r *http.Request) {
 		tag := typeField.Tag
 
 		if valueField.IsValid() && valueField.CanInterface() {
-			use(typeField.Name, valueField.Interface(), tag.Get("tag_name"))
+			use(typeField.Name, valueField.Interface(), tag.Get("valid"))
 		}
 	}
 }
 
-var f = &Foo{
-	FirstName: "Drew",
-	LastName:  "Olson",
-	Age:       30,
-}
-
 func BenchmarkVanilla(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		parse(f, &http.Request{})
+		data := &sample{
+			Title:   "FooBar",
+			Email:   "email@example.com",
+			Message: "Hello there",
+			Date:    "yes",
+		}
+		parse(data)
 	}
 }
