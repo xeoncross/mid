@@ -20,7 +20,7 @@ func main() {
 
 	router := httprouter.New()
 	router.GET("/", c.homepage)
-	router.POST("/validate", mid.Validate(c.validate, &PostInput{&Post{}}))
+	router.POST("/validate", mid.Validate(c.validate, &PostInput{}))
 
 	fmt.Println("started on ", listenAddr)
 	err := http.ListenAndServe(listenAddr, router)
@@ -39,7 +39,7 @@ type Post struct {
 
 // PostInput defines where we should look for the Post object (a HTTP Form)
 type PostInput struct {
-	Form *Post
+	Form Post
 }
 
 // PostService handles CRUD for database
@@ -58,7 +58,7 @@ type Controller struct {
 // Will only be called if the validation passes
 func (c *Controller) validate(w http.ResponseWriter, r *http.Request, in interface{}) {
 	p := in.(*PostInput)
-	c.postService.Save(p.Form)
+	c.postService.Save(&p.Form)
 
 	e := json.NewEncoder(w)
 	e.SetIndent("", "  ")

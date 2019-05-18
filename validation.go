@@ -2,7 +2,6 @@ package mid
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"reflect"
 
@@ -25,8 +24,6 @@ type ValidationErrors map[string]string
 
 // ValidateStruct provided returning a ValidationErrors or error
 func ValidateStruct(h reflect.Value, sc structContext, r *http.Request, ps httprouter.Params) (err error, validation ValidationErrors) {
-
-	fmt.Printf("Context: %+v\n", sc)
 
 	// We don't care what the client says, the boss wants JSON
 	// if r.Header.Get("Content-Type") == "application/json" {
@@ -59,7 +56,9 @@ func ValidateStruct(h reflect.Value, sc structContext, r *http.Request, ps httpr
 			}
 		}
 
-	} else if sc.form { // GET or application/x-www-form-urlencoded
+	} else if sc.form {
+
+		// fmt.Printf("Form Context: %+v\n", sc)
 
 		form := h.FieldByName(FieldForm)
 		f := form.Addr().Interface()
@@ -77,7 +76,7 @@ func ValidateStruct(h reflect.Value, sc structContext, r *http.Request, ps httpr
 			r.ParseForm()
 		}
 
-		fmt.Printf("Decoded Form: %+v\n", r.Form)
+		// fmt.Printf("Decoded Form: %+v\n", r.Form)
 
 		// 1. Try to insert form data into the struct
 		decoder := schema.NewDecoder()
@@ -93,7 +92,7 @@ func ValidateStruct(h reflect.Value, sc structContext, r *http.Request, ps httpr
 		// not safe for us, nor helpful to our clients
 		decoder.Decode(f, r.Form)
 
-		fmt.Printf("Decoded Object: %v\n", f)
+		// fmt.Printf("Decoded Object: %v\n", f)
 	}
 
 	// Query params?

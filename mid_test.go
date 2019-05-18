@@ -3,9 +3,12 @@ package mid
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -34,6 +37,10 @@ type sampleFORM struct {
 	Form sample
 }
 
+type sampleFORMPtr struct {
+	Form *sample
+}
+
 type sampleParam struct {
 	Param struct {
 		Name string `valid:"utfletter,required"`
@@ -54,15 +61,24 @@ type sampleQuery struct {
 //     p.Set(reflect.Zero(p.Type()))
 // }
 
-func TestValidation(t *testing.T) {
+// https://gist.github.com/tonyhb/5819315
+func structToMap(i interface{}) (values url.Values) {
+	values = url.Values{}
+	iVal := reflect.ValueOf(i).Elem()
+	typ := iVal.Type()
+	for i := 0; i < iVal.NumField(); i++ {
+		values.Set(typ.Field(i).Name, fmt.Sprint(iVal.Field(i)))
+	}
+	return
+}
 
-	handlerResponse := "OK"
+func TestValidation(t *testing.T) {
 
 	scenarios := []struct {
 		Name       string
 		Object     interface{}
 		JSON       interface{}
-		Form       interface{}
+		Form       url.Values
 		URL        string // URL Params & query string
 		StatusCode int
 		Response   string
@@ -101,7 +117,7 @@ func TestValidation(t *testing.T) {
 				Message: "Hello there",
 				Date:    "yes",
 			},
-			Response:   handlerResponse,
+			// Response:   "TODO",
 			StatusCode: http.StatusOK,
 		},
 		{
@@ -118,18 +134,25 @@ func TestValidation(t *testing.T) {
 			StatusCode: http.StatusBadRequest,
 		},
 		{
-			Name:   "Valid Form",
+			Name:   "Valid Form Struct",
 			URL:    "/a/1",
 			Object: &sampleFORM{},
-			Form: sample{
+			// Form: toURLValues(map[string][]string{
+			// 	"Title":   []string{"FooBar"},
+			// 	"Email":   []string{"email@example.com"},
+			// 	"Message": []string{"Hello there"},
+			// 	"Date":    []string{"yes"},
+			// }),
+			Form: structToMap(&sample{
 				Title:   "FooBar",
 				Email:   "email@example.com",
 				Message: "Hello there",
 				Date:    "yes",
-			},
-			Response:   handlerResponse,
+			}),
+			// Response:   "TODO",
 			StatusCode: http.StatusOK,
 		},
+
 		// {
 		// 	Name:   "Invalid JSON",
 		// 	URL:    "/a/1",
@@ -147,16 +170,15 @@ func TestValidation(t *testing.T) {
 
 	// Used by all tests since we don't care what the handler does after the validation
 	handler := func(w http.ResponseWriter, r *http.Request, i interface{}) {
-		// in := i.(*InputNewPost)
-		// e := json.NewEncoder(w)
-		// e.SetIndent("", "  ")
-		// err = e.Encode(in)
-		//
-		// if err != nil {
-		// 	http.Error(w, err.Error(), http.StatusInternalServerError)
-		// }
+		e := json.NewEncoder(w)
+		e.SetIndent("", "  ")
+		err := e.Encode(i)
 
-		w.Write([]byte(handlerResponse))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+
+		// w.Write([]byte(handlerResponse))
 	}
 
 	var err error
@@ -180,13 +202,13 @@ func TestValidation(t *testing.T) {
 				req.Header.Add("Content-Type", "application/json")
 			} else if s.Form != nil {
 
-				// f := s.Form.(*url.Values)
-				// req, err = http.NewRequest("POST", s.URL, strings.NewReader(f.Encode()))
-				// if err != nil {
-				// 	t.Fatal(err)
-				// }
-				//
-				// req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+				f := s.Form
+				req, err = http.NewRequest("POST", s.URL, strings.NewReader(f.Encode()))
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 			} else {
 				req, err = http.NewRequest("POST", s.URL, nil)
 				if err != nil {
