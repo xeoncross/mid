@@ -20,7 +20,7 @@ func JSON(w http.ResponseWriter, status int, data interface{}) (int, error) {
 	}
 
 	w.WriteHeader(status)
-	w.Header().Set("Content-type", "application/json")
+	w.Header().Set("Content-Type", "application/json")
 	buf.WriteTo(w)
 
 	return buf.Len(), nil

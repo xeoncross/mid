@@ -98,7 +98,7 @@ func BenchmarkEcho(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		rr := httptest.NewRecorder()
-		postBody := PostBody(data)
+		postBody := PostBody(echosample{sample: data})
 		req, err := http.NewRequest("POST", "/hello/John", postBody)
 		if err != nil {
 			b.Fatal(err)
