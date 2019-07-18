@@ -19,6 +19,8 @@ func Throttle(h http.Handler, n int) http.Handler {
 }
 
 // Throttler creates a re-usable limiter for multiple http.Handlers
+// TODO: close connection after X seconds
+// https://github.com/go-chi/chi/blob/master/middleware/throttle.go
 func Throttler(n int) func(http.Handler) http.Handler {
 	sema := make(chan struct{}, n)
 
@@ -35,6 +37,11 @@ func Throttler(n int) func(http.Handler) http.Handler {
 // Go does this internally (10MB) if not specified: https://golang.org/src/net/http/request.go#L1136
 func MaxBodySize(h http.Handler, n int64) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		// 				// Limit the size of the request body to avoid a DOS with a large nested
+		// 				// JSON structure: https://golang.org/src/net/http/request.go#L1148
+		// 				r := io.LimitReader(r.Body, MaxBodySize)
+
 		r.Body = http.MaxBytesReader(w, r.Body, n)
 		h.ServeHTTP(w, r)
 	})
