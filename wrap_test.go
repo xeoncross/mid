@@ -27,7 +27,6 @@ type TestUserService struct {
 
 // Test POST with JSON body
 func (s *TestUserService) Save(w http.ResponseWriter, r *http.Request, u *TestUser) (*TestUser, error) {
-	// fmt.Printf("Called Save with %v from %v\n", u, s)
 	u.ID = s.Value
 	return u, nil
 }
@@ -36,9 +35,7 @@ func (s *TestUserService) Save(w http.ResponseWriter, r *http.Request, u *TestUs
 func (s *TestUserService) Get(w http.ResponseWriter, r *http.Request, params struct {
 	ID int `valid:"required"`
 }) (*TestUser, error) {
-	// fmt.Printf("Called Get with %v\n", params.ID)
 	return &TestUser{Name: "John", ID: params.ID}, nil
-	// return nil, errors.New("User not found")
 }
 
 //
@@ -93,11 +90,18 @@ func TestValidation(t *testing.T) {
 			JSON:       map[string]string{"Email": "@"},
 			StatusCode: http.StatusOK,
 			Function:   controller.Save,
-			Response:   `{"data":{"Name":"john","Email":"j@example.com","ID":23}}`,
+			Response:   `{"error":"Invalid Request","fields":{"Email":"@ does not validate as email","Name":"non zero value required"}}`,
 		},
 		{
 			Name:       "Valid Query",
 			URL:        "/Get?ID=34",
+			StatusCode: http.StatusOK,
+			Function:   controller.Get,
+			Response:   `{"data":{"Name":"John","Email":"","ID":34}}`,
+		},
+		{
+			Name:       "Inalid Query",
+			URL:        "/Get?ID=foo",
 			StatusCode: http.StatusOK,
 			Function:   controller.Get,
 			Response:   `{"data":{"Name":"John","Email":"","ID":34}}`,

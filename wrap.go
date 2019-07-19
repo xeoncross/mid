@@ -19,6 +19,9 @@ const (
 	TagParam = "p"
 )
 
+// ValidationErrorMessage sent to client on validation fail
+var ValidationErrorMessage = "Invalid Request"
+
 // "A JSON response should contain either a data object or an error object,
 // but not both. If both data and error are present, the error object takes
 // precedence." - https://google.github.io/styleguide/jsoncstyleguide.xml
@@ -37,7 +40,7 @@ func Wrap(function interface{}) httprouter.Handle {
 	funcType := reflect.TypeOf(function)
 
 	if funcType.Kind() != reflect.Func {
-		panic(fmt.Errorf("Wrap was called with a non-function type: %+v\n", funcType))
+		panic(fmt.Errorf("wrap was called with a non-function type: %+v", funcType))
 	}
 
 	// The method Call() needs this as the first value
@@ -49,6 +52,11 @@ func Wrap(function interface{}) httprouter.Handle {
 
 	// TODO more error checking here
 	paramType := funcType.In(2)
+
+	structType := paramType
+	if paramType.Kind() == reflect.Ptr {
+		structType = paramType.Elem()
+	}
 
 	// Cache setup finished, now get ready to process requests
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -64,28 +72,44 @@ func Wrap(function interface{}) httprouter.Handle {
 		}
 
 		// All request types support looking for query and route params
-		numFields := paramType.NumField()
+		// numFields := paramType.Elem().NumField()
+		// numFields := object.Elem().NumField()
+		numFields := structType.NumField()
+
 		queryValues := r.URL.Query()
 		for j := 0; j < numFields; j++ {
-			field := paramType.Field(j)
+			field := structType.Field(j)
+
+			// fmt.Printf("%v\n", field)
 
 			var s string
-			// Look in the
+			var location string
+			// Look in the route parameters first
 			if tag, ok := field.Tag.Lookup(TagParam); ok {
 				s = ps.ByName(tag)
+				location = "Route Parameter"
 			} else if tag, ok := field.Tag.Lookup(TagQuery); ok {
 				s = queryValues.Get(tag)
+				location = "Query Parameter"
 			} else {
+				s = queryValues.Get(field.Name)
+				location = "Query Parameter"
+			}
+
+			if s == "" {
 				continue
 			}
 
 			val := object.Field(j)
 
-			err := parseSimpleParam(s, "Query Parameter", field, &val)
+			err := parseSimpleParam(s, location, field, &val)
 			if err != nil {
-				// fmt.Println(err)
-				// What should we do here?
-				// Validation will handle this error for us right?
+				// TODO ignore this since validation will handle this error
+				// fmt.Println("parseSimpleParam", err)
+
+				// Skip the rest of the input since this one field is invalid
+				// Saves resources - but produces less-useful error messages
+				break
 			}
 		}
 
@@ -147,55 +171,59 @@ func Wrap(function interface{}) httprouter.Handle {
 				// not safe for us, nor helpful to our clients
 				decoder.Decode(oi, r.Form)
 			}
+		}
 
-			// 2. Validate the struct data rules
-			isValid, err := govalidator.ValidateStruct(object.Interface())
+		// 2. Validate the struct data rules
+		isValid, err := govalidator.ValidateStruct(object.Interface())
 
-			if !isValid {
-				validationErrors := govalidator.ErrorsByField(err)
+		if !isValid {
+			validationErrors := govalidator.ErrorsByField(err)
 
-				w.WriteHeader(http.StatusBadRequest)
+			// https://gist.github.com/Xeoncross/e592755a1e5fecf6a1cc25fc593b1239
+			// w.WriteHeader(http.StatusBadRequest)
+
+			JSON(w, http.StatusOK, JSONResponse{
+				Error:  ValidationErrorMessage,
+				Fields: validationErrors,
+			})
+
+			return
+		}
+
+		in := []reflect.Value{
+			reflect.ValueOf(w),
+			reflect.ValueOf(r),
+			object,
+		}
+
+		response := funcValue.Call(in)
+
+		// Expect all service methods in one of two forms:
+		// func (...) error
+		// func (...) (interface{}, error)
+		ek := 0
+		if funcType.NumOut() == 2 {
+			ek = 1
+		}
+
+		if err, ok := response[ek].Interface().(error); ok {
+			if err != nil {
+				// http.Error(w, err.Error(), http.StatusBadRequest)
 				JSON(w, http.StatusOK, JSONResponse{
-					Error:  "Invalid Request",
-					Fields: validationErrors,
+					Error: err.Error(),
 				})
 				return
 			}
-
-			in := []reflect.Value{
-				reflect.ValueOf(w),
-				reflect.ValueOf(r),
-				object,
-			}
-
-			response := funcValue.Call(in)
-
-			// Expect all service methods in one of two forms:
-			// func (...) error
-			// func (...) (interface{}, error)
-			ek := 0
-			if funcType.NumOut() == 2 {
-				ek = 1
-			}
-
-			if err, ok := response[ek].Interface().(error); ok {
-				if err != nil {
-					// http.Error(w, err.Error(), http.StatusBadRequest)
-					JSON(w, http.StatusOK, JSONResponse{
-						Error: err.Error(),
-					})
-					return
-				}
-			}
-
-			if ek == 0 {
-				return
-			}
-
-			JSON(w, http.StatusOK, JSONResponse{
-				Data: response[0].Interface(),
-			})
 		}
+
+		if ek == 0 {
+			return
+		}
+
+		JSON(w, http.StatusOK, JSONResponse{
+			Data: response[0].Interface(),
+		})
+
 	}
 }
 
