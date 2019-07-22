@@ -183,41 +183,44 @@ func TestValidation(t *testing.T) {
 
 }
 
-// func BenchmarkHandler(b *testing.B) {
-//
-// 	var req *http.Request
-//
-// 	// Create HTTP mux/router
-// 	mux, err := Wrap(&TestUserService{Foo: "foo"})
-// 	if err != nil {
-// 		b.Error(err)
-// 	}
-//
-// 	jsonbytes, err := json.Marshal(map[string]string{"name": "john", "email": "email@example.com"})
-// 	if err != nil {
-// 		b.Error(err)
-// 	}
-//
-// 	for i := 0; i < b.N; i++ {
-// 		req, err = http.NewRequest("POST", "/Save", bytes.NewReader(jsonbytes))
-// 		if err != nil {
-// 			b.Fatal(err)
-// 		}
-//
-// 		req.Header.Add("Content-Type", "application/json")
-//
-// 		rr := httptest.NewRecorder()
-//
-// 		mux.ServeHTTP(rr, req)
-//
-// 		if status := rr.Code; status != http.StatusOK {
-// 			b.Errorf("Wrong status code: got %v want %v", status, http.StatusOK)
-// 		}
-//
-// 		response := strings.TrimSpace(rr.Body.String())
-// 		want := `{"success":true,"data":23}`
-// 		if response != want {
-// 			b.Errorf("Wrong response:\ngot %s\nwant %s", response, want)
-// 		}
-// 	}
-// }
+func BenchmarkHandler(b *testing.B) {
+
+	var req *http.Request
+
+	// Service we will be wrapping
+	controller := &TestUserService{23}
+
+	// Create HTTP mux/router
+	mux := httprouter.New()
+
+	// Our route
+	mux.POST("/Save", Wrap(controller.Save))
+
+	jsonbytes, err := json.Marshal(map[string]string{"name": "john", "Email": "j@example.com"})
+	if err != nil {
+		b.Error(err)
+	}
+
+	for i := 0; i < b.N; i++ {
+		req, err = http.NewRequest("POST", "/Save", bytes.NewReader(jsonbytes))
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		req.Header.Add("Content-Type", "application/json")
+
+		rr := httptest.NewRecorder()
+
+		mux.ServeHTTP(rr, req)
+
+		if status := rr.Code; status != http.StatusOK {
+			b.Errorf("Wrong status code: got %v want %v", status, http.StatusOK)
+		}
+
+		response := strings.TrimSpace(rr.Body.String())
+		want := `{"data":{"Name":"john","Email":"j@example.com","ID":23}}`
+		if response != want {
+			b.Errorf("Wrong response:\ngot %s\nwant %s", response, want)
+		}
+	}
+}
