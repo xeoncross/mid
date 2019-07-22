@@ -3,6 +3,7 @@ package mid
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -38,15 +39,17 @@ func (s *TestUserService) Get(w http.ResponseWriter, r *http.Request, params str
 	return &TestUser{Name: "John", ID: params.ID}, nil
 }
 
-//
-// // Test GET with multiple params for loading
-// func (s *TestUserService) Recent(ctx context.Context, params struct {
-// 	Page    int
-// 	PerPage int
-// }) ([]*TestUser, error) {
-// 	// fmt.Printf("Called Recent with %v from %v\n", params.Page, params.PerPage)
-// 	return []*TestUser{&TestUser{Name: "Alice"}, &TestUser{Name: "Bob"}}, nil
-// }
+type ResultPage struct {
+	Page int `valid:"required,numeric" p:"page"`
+}
+
+// Test GET with multiple params for loading
+func (s *TestUserService) Recent(w http.ResponseWriter, r *http.Request, params ResultPage) ([]*TestUser, error) {
+	if params.Page != 10 {
+		return nil, fmt.Errorf("Invalid result page: %v", params.Page)
+	}
+	return []*TestUser{&TestUser{Name: "Alice"}, &TestUser{Name: "Bob"}}, nil
+}
 
 // type sample struct {
 // }
@@ -69,7 +72,8 @@ func TestValidation(t *testing.T) {
 	scenarios := []struct {
 		Name       string
 		Method     string
-		URL        string // URL Params & query string
+		Path       string
+		URL        string // URL path & query string
 		JSON       interface{}
 		Form       url.Values
 		Function   interface{}
@@ -100,11 +104,19 @@ func TestValidation(t *testing.T) {
 			Response:   `{"data":{"Name":"John","Email":"","ID":34}}`,
 		},
 		{
-			Name:       "Inalid Query",
+			Name:       "Invalid Query",
 			URL:        "/Get?ID=foo",
 			StatusCode: http.StatusOK,
 			Function:   controller.Get,
-			Response:   `{"data":{"Name":"John","Email":"","ID":34}}`,
+			Response:   `{"error":"Invalid Request","fields":{"ID":"non zero value required"}}`,
+		},
+		{
+			Name:       "Valid Route Param",
+			URL:        "/users/10",
+			Path:       "/users/:page",
+			StatusCode: http.StatusOK,
+			Function:   controller.Recent,
+			Response:   `{"data":[{"Name":"Alice","Email":"","ID":0},{"Name":"Bob","Email":"","ID":0}]}`,
 		},
 		// {
 		// 	Name:       "Valid Query Parameter",
@@ -166,15 +178,21 @@ func TestValidation(t *testing.T) {
 
 			mux := httprouter.New()
 
-			u, err := url.Parse(s.URL)
-			if err != nil {
-				t.Error(err)
+			path := s.Path
+
+			// Get the path from the URL if not provided
+			if path == "" {
+				u, err := url.Parse(s.URL)
+				if err != nil {
+					t.Error(err)
+				}
+				path = u.Path
 			}
 
 			if s.JSON != nil {
-				mux.POST(u.Path, Wrap(s.Function))
+				mux.POST(path, Wrap(s.Function))
 			} else {
-				mux.GET(u.Path, Wrap(s.Function))
+				mux.GET(path, Wrap(s.Function))
 			}
 
 			// Create HTTP mux/router
