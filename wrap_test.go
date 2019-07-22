@@ -40,7 +40,9 @@ func (s *TestUserService) Get(w http.ResponseWriter, r *http.Request, params str
 }
 
 type ResultPage struct {
-	Page int `valid:"required,numeric" p:"page"`
+	// We don't need the `valid:"numeric"` check since it will be converted for
+	// us if it fits in the int type we defined (int = 32 bits)
+	Page int `valid:"required" p:"page"`
 }
 
 // Test GET with multiple params for loading
@@ -50,20 +52,6 @@ func (s *TestUserService) Recent(w http.ResponseWriter, r *http.Request, params 
 	}
 	return []*TestUser{&TestUser{Name: "Alice"}, &TestUser{Name: "Bob"}}, nil
 }
-
-// type sample struct {
-// }
-//
-// // https://gist.github.com/tonyhb/5819315
-// func structToMap(i interface{}) (values url.Values) {
-// 	values = url.Values{}
-// 	iVal := reflect.ValueOf(i).Elem()
-// 	typ := iVal.Type()
-// 	for i := 0; i < iVal.NumField(); i++ {
-// 		values.Set(typ.Field(i).Name, fmt.Sprint(iVal.Field(i)))
-// 	}
-// 	return
-// }
 
 func TestValidation(t *testing.T) {
 
@@ -118,25 +106,6 @@ func TestValidation(t *testing.T) {
 			Function:   controller.Recent,
 			Response:   `{"data":[{"Name":"Alice","Email":"","ID":0},{"Name":"Bob","Email":"","ID":0}]}`,
 		},
-		// {
-		// 	Name:       "Valid Query Parameter",
-		// 	URL:        "/Get?ID=34",
-		// 	JSON:       nil,
-		// 	StatusCode: http.StatusOK,
-		// },
-		// {
-		// 	Name:       "Inalid Query Parameter",
-		// 	URL:        "/Get?ID=foo",
-		// 	JSON:       nil,
-		// 	StatusCode: http.StatusBadRequest,
-		// },
-		// {
-		// 	Name: "Valid Query Parameters",
-		// 	URL:  "/Recent?Page=1&PerPage=23",
-		// 	JSON: nil,
-		// 	// Response:   "a",
-		// 	StatusCode: http.StatusOK,
-		// },
 	}
 
 	var err error
@@ -194,12 +163,6 @@ func TestValidation(t *testing.T) {
 			} else {
 				mux.GET(path, Wrap(s.Function))
 			}
-
-			// Create HTTP mux/router
-			// mux, err := Wrap(&TestUserService{Foo: "foo"})
-			// if err != nil {
-			// 	log.Fatal(err)
-			// }
 
 			mux.ServeHTTP(rr, req)
 

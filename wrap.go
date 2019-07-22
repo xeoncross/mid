@@ -33,6 +33,13 @@ type JSONResponse struct {
 	Fields map[string]string `json:"fields,omitempty"`
 }
 
+// TODO figure out a wrapping scheme so we can use httprouter or gorilla/mux
+// type paramFetcher interface {
+// 	Get(key string) string
+// }
+
+// func WrapHttpRouter(function interface{}, param paramFetcher) httprouter.Handle {}
+
 // Wrap a function with a http.Handler to respond to HTTP GET/POST requests
 func Wrap(function interface{}) httprouter.Handle {
 
@@ -72,8 +79,6 @@ func Wrap(function interface{}) httprouter.Handle {
 		}
 
 		// All request types support looking for query and route params
-		// numFields := paramType.Elem().NumField()
-		// numFields := object.Elem().NumField()
 		numFields := structType.NumField()
 
 		queryValues := r.URL.Query()
@@ -102,6 +107,7 @@ func Wrap(function interface{}) httprouter.Handle {
 
 			val := object.Field(j)
 
+			// TODO remove error handling since we only use govalidator's messages
 			err := parseSimpleParam(s, location, field, &val)
 			if err != nil {
 				// TODO ignore this since validation will handle this error
