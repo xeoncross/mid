@@ -42,7 +42,7 @@ func (s *TestUserService) Get(w http.ResponseWriter, r *http.Request, params str
 type ResultPage struct {
 	// We don't need the `valid:"numeric"` check since it will be converted for
 	// us if it fits in the int type we defined (int = 32 bits)
-	Page int `valid:"required" p:"page"`
+	Page int `valid:"required" param:"page"`
 }
 
 // Test GET with multiple params for loading
@@ -145,7 +145,7 @@ func TestValidation(t *testing.T) {
 
 			rr := httptest.NewRecorder()
 
-			mux := httprouter.New()
+			router := httprouter.New()
 
 			path := s.Path
 
@@ -159,12 +159,12 @@ func TestValidation(t *testing.T) {
 			}
 
 			if s.JSON != nil {
-				mux.POST(path, Wrap(s.Function))
+				router.Handler("POST", path, Hydrate(s.Function))
 			} else {
-				mux.GET(path, Wrap(s.Function))
+				router.Handler("GET", path, Hydrate(s.Function))
 			}
 
-			mux.ServeHTTP(rr, req)
+			router.ServeHTTP(rr, req)
 
 			if status := rr.Code; status != s.StatusCode {
 				t.Errorf("%s returned wrong status code: got %v want %v", s.URL, status, s.StatusCode)
@@ -190,11 +190,11 @@ func BenchmarkHandler(b *testing.B) {
 	// Service we will be wrapping
 	controller := &TestUserService{23}
 
-	// Create HTTP mux/router
-	mux := httprouter.New()
+	// Create HTTP router/router
+	router := httprouter.New()
 
 	// Our route
-	mux.POST("/Save", Wrap(controller.Save))
+	router.Handler("POST", "/Save", Hydrate(controller.Save))
 
 	jsonbytes, err := json.Marshal(map[string]string{"name": "john", "Email": "j@example.com"})
 	if err != nil {
@@ -211,7 +211,7 @@ func BenchmarkHandler(b *testing.B) {
 
 		rr := httptest.NewRecorder()
 
-		mux.ServeHTTP(rr, req)
+		router.ServeHTTP(rr, req)
 
 		if status := rr.Code; status != http.StatusOK {
 			b.Errorf("Wrong status code: got %v want %v", status, http.StatusOK)

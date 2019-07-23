@@ -8,15 +8,16 @@ import (
 	"reflect"
 
 	"github.com/asaskevich/govalidator"
+	"github.com/gorilla/mux"
 	"github.com/gorilla/schema"
 	"github.com/julienschmidt/httprouter"
 )
 
 const (
 	// TagQuery is the field tag for looking up Query Parameters
-	TagQuery = "q"
+	TagQuery = "query"
 	// TagParam is the field tag for looking up URL Parameters
-	TagParam = "p"
+	TagParam = "param"
 )
 
 // ValidationErrorMessage sent to client on validation fail
@@ -33,15 +34,39 @@ type JSONResponse struct {
 	Fields map[string]string `json:"fields,omitempty"`
 }
 
-// TODO figure out a wrapping scheme so we can use httprouter or gorilla/mux
-// type paramFetcher interface {
-// 	Get(key string) string
+// // HTTPRouterWrapper for use with julienschmidt/httprouter
+// func HTTPRouterWrapper() func(interface{}) httprouter.Handle {
+// 	return func(function interface{}) httprouter.Handle {
+// 		return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 			get := func(name string) string {
+// 				return ps.ByName(name)
+// 			}
+//
+// 			Wrap(function, w, r, get)
+// 		}
+// 	}
+// }
+//
+// // GorillaMuxWrapper for use with gorilla/mux
+// func GorillaMuxWrapper() func(interface{}) http.HandlerFunc {
+// 	return func(function interface{}) http.HandlerFunc {
+// 		return func(w http.ResponseWriter, r *http.Request) {
+// 			params := mux.Vars(r)
+//
+// 			get := func(name string) string {
+// 				if param, ok := params[name]; ok {
+// 					return param
+// 				}
+// 				return ""
+// 			}
+//
+// 			Wrap(function, w, r, get)
+// 		}
+// 	}
 // }
 
-// func WrapHttpRouter(function interface{}, param paramFetcher) httprouter.Handle {}
-
-// Wrap a function with a http.Handler to respond to HTTP GET/POST requests
-func Wrap(function interface{}) httprouter.Handle {
+// Hydrate and validate a http.Handler with input from HTTP GET/POST requests
+func Hydrate(function interface{}) http.HandlerFunc {
 
 	// Improve performance (and clarity) by pre-computing needed variables
 	funcType := reflect.TypeOf(function)
@@ -50,7 +75,6 @@ func Wrap(function interface{}) httprouter.Handle {
 		panic(fmt.Errorf("wrap was called with a non-function type: %+v", funcType))
 	}
 
-	// The method Call() needs this as the first value
 	funcValue := reflect.ValueOf(function)
 
 	if funcType.NumIn() != 3 {
@@ -65,8 +89,51 @@ func Wrap(function interface{}) httprouter.Handle {
 		structType = paramType.Elem()
 	}
 
+	// We can't detect the router type until the first request
+	// 0 = false, 1 = true, 2 = not checked
+	isHttpRouter := 2
+	isGorillaMux := 2
+
+	// Abstraction for fetching from either router's parameters
+	var params func(name string) string
+
 	// Cache setup finished, now get ready to process requests
-	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		if isHttpRouter == 2 {
+			if httprouter.ParamsFromContext(r.Context()) != nil {
+				isHttpRouter = 1
+				isGorillaMux = 0
+			} else {
+				isHttpRouter = 0
+			}
+		}
+
+		if isGorillaMux == 2 {
+			if mux.Vars(r) != nil {
+				isGorillaMux = 1
+				isHttpRouter = 0
+			}
+		}
+
+		if isHttpRouter == 1 {
+			vars := httprouter.ParamsFromContext(r.Context())
+			params = func(name string) string {
+				return vars.ByName(name)
+			}
+		} else if isGorillaMux == 1 {
+			vars := mux.Vars(r)
+			params = func(name string) string {
+				if param, ok := vars[name]; ok {
+					return param
+				}
+				return ""
+			}
+		} else {
+			params = func(string) string {
+				return ""
+			}
+		}
 
 		// Create a new instance for each goroutine
 		var object reflect.Value
@@ -85,13 +152,11 @@ func Wrap(function interface{}) httprouter.Handle {
 		for j := 0; j < numFields; j++ {
 			field := structType.Field(j)
 
-			// fmt.Printf("%v\n", field)
-
 			var s string
 			var location string
 			// Look in the route parameters first
 			if tag, ok := field.Tag.Lookup(TagParam); ok {
-				s = ps.ByName(tag)
+				s = params(tag)
 				location = "Route Parameter"
 			} else if tag, ok := field.Tag.Lookup(TagQuery); ok {
 				s = queryValues.Get(tag)
@@ -125,6 +190,7 @@ func Wrap(function interface{}) httprouter.Handle {
 			// Limit the size of the request body to avoid a DOS with a large nested
 			// JSON structure: https://golang.org/src/net/http/request.go#L1148
 			// r := io.LimitReader(r.Body, MaxBodySize)
+			// TODO should we check the r.Body type to see if it's a LimitedReader?
 
 			oi := object.Interface()
 

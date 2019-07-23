@@ -28,3 +28,50 @@ package mid
 // 		return http.HandlerFunc(fn)
 // 	}
 // }
+
+// Recover from panics or unexpected errors
+// func Recover(h http.Handler) http.Handler {
+// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// 		var err error
+// 		defer func() {
+// 			r := recover()
+// 			if r != nil {
+// 				switch t := r.(type) {
+// 				case string:
+// 					err = errors.New(t)
+// 				case error:
+// 					err = t
+// 				default:
+// 					err = errors.New("Unknown error")
+// 				}
+// 				http.Error(w, err.Error(), http.StatusInternalServerError)
+// 			}
+// 		}()
+// 		h.ServeHTTP(w, r)
+// 	})
+// }
+
+// TODO
+// Rather than just a counter, how about a struct that's a map for counting
+// HTTP [TYPE] += 1 requests?
+// type RequestCounterStats struct {
+// 	mu     sync.RWMutex
+// 	Counts map[string]int
+// 	Total  uint64
+// }
+//
+// // Reset the response counts
+// func (s *RequestCounterStats) Reset() {
+// 	s.mu.Lock()
+// 	s.Counts = map[string]int{}
+// 	s.Total = 0
+// 	s.mu.Unlock()
+// }
+//
+// // Reset the response counts
+// func (s *RequestCounterStats) Add(method string) {
+// 	s.mu.Lock()
+// 	s.Counts[method]++
+// 	s.Total++
+// 	s.mu.Unlock()
+// }
