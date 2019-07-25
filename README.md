@@ -27,7 +27,7 @@ For all user input you must define a struct that contains the expected fields an
 			Email   string `valid:"required,email"`
 		}
 
-Next we write a http.HandlerFunc with _one extra field_: a reference to the populated `NewComment`:
+Next we write a http.HandlerFunc with _one extra field_: a reference to the *populated* `NewComment`:
 
 		handler := func(w http.ResponseWriter, r *http.Request, comment NewComment) error {
 			// we now have access to populated fields like "comment.Email"
@@ -36,7 +36,7 @@ Next we write a http.HandlerFunc with _one extra field_: a reference to the popu
 
 We then wire this up to our router and are ready to start accepting input:
 
-    // julienschmidt/httprouter
+		// julienschmidt/httprouter
 		router.Handler("POST", "/post/:post_id/comment", mid.Hydrate(handler))
 
 		// gorilla/mux
@@ -45,8 +45,8 @@ We then wire this up to our router and are ready to start accepting input:
 		// net/http
 		http.Handle("/post/comment", mid.Hydrate(handler))
 
-> Note: the net/http mux does not provide "route parameters" so the above example
-> won't actually pass the validation due to the PostID struct tag "param".
+> Note: the last net/http mux example does not provide "route parameters" so it
+> won't actually pass the validation due to the PostID struct tag "param" not existing.
 
 At this point we can rest assured that our handler will never be called unless
 input matching our exact validation rules is provided by the client. If the
