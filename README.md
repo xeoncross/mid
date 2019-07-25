@@ -1,4 +1,4 @@
-# Mid
+# Mid [![Go Report Card](https://goreportcard.com/badge/github.com/xeoncross/mid)](https://goreportcard.com/report/github.com/xeoncross/mid) [![GoDoc](https://godoc.org/github.com/xeoncross/mid?status.svg)](https://godoc.org/github.com/xeoncross/mid) 
 
 A `net/http` compatible middleware for protecting, validating, and automatically
 hydrating handlers with user input from JSON or multipart form bodies, route
