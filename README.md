@@ -1,7 +1,8 @@
 # Mid
 
 A `net/http` compatible middleware for protecting, validating, and automatically
-hydrating handlers with user input from JSON or multipart form bodies.
+hydrating handlers with user input from JSON or multipart form bodies, route
+parameters, and query string values.
 
 Mid is a tiny library that saves time and makes code easier to read by removing
 the need to type input decoding and validation checks for every handler.
@@ -29,7 +30,7 @@ For all user input you must define a struct that contains the expected fields an
 Next we write a http.HandlerFunc with _one extra field_: a reference to the `InputComment`:
 
 		handler := func(w http.ResponseWriter, r *http.Request, comment InputComment) error {
-			// access to fields like "comment.Email"
+			// we now have access to populated fields like "comment.Email"
 			return nil
 		}
 
@@ -37,15 +38,37 @@ We then wire this up to our router and are ready to start accepting input:
 
     router.POST("/post/:post_id/comment", mid.Hydrate(handler))
 
-At this point we can rest assured that our handler will never be called unless input
-matching our exact validation rules is provided by the client. If the client passes
-invalid data then a JSON response object is returned specifying the issues.
+At this point we can rest assured that our handler will never be called unless
+input matching our exact validation rules is provided by the client. If the
+client passes invalid data, then a JSON response object is returned specifying
+the issues.
 
 		{
 			error: string
 			fields: map[string]string
 		}
 
+We follow a simpler version of the Google style for JSON API responses:
+
+> "A JSON response should contain either a data object or an error object,
+>  but not both. If both data and error are present, the error object takes
+> precedence." - https://google.github.io/styleguide/jsoncstyleguide.xml
+
+## Responding to clients
+
+What if you want to return data to the client? You can specify any type and it
+will be returned to the client packaged in a standard JSON wrapper.
+
+		handler := func(w http.ResponseWriter, r *http.Request, comment InputComment) (Comment, error) {
+			comment, err := commentService.Save(InputComment)
+			return comment, err
+		}
+
+This will result in the following HTTP 200 response:
+
+		{
+			data: { ...Comment.fields here... }
+		}
 
 ### See the [examples](https://github.com/Xeoncross/mid/tree/master/examples) for more.
 
@@ -65,7 +88,7 @@ It is recommended you create a helper function that wraps both these and the Hyd
 		// Close connection with a 503 error if not handled within 3 seconds
 		throttler := mid.RequestThrottler(20, 3 * time.Second)
 
-		wrapper := func(function interface{}, maxBodySize int64) http.Handlerfunc {
+		wrapper := func(function interface{}) http.Handlerfunc {
 			return throttler(mid.MaxBodySize(mid.Hydrate(function), 1024 * 1024))
 		}
 
@@ -86,17 +109,17 @@ $ go test --bench=. --benchmem
 goos: darwin
 goarch: amd64
 pkg: github.com/Xeoncross/mid/benchmarks
-BenchmarkEcho-8       	  200000	      7901 ns/op	    3715 B/op	      39 allocs/op
-BenchmarkGongular-8   	  100000	     19869 ns/op	    6565 B/op	      76 allocs/op
-BenchmarkMid-8        	  100000	     19448 ns/op	    5620 B/op	      68 allocs/op
-BenchmarkVanilla-8    	 2000000	       985 ns/op	     288 B/op	      17 allocs/op
+BenchmarkEcho-8       	  200000	      8727 ns/op	    3731 B/op	      39 allocs/op
+BenchmarkGongular-8   	  100000	     18266 ns/op	    6511 B/op	      76 allocs/op
+BenchmarkMid-8        	  100000	     12607 ns/op	    7174 B/op	     120 allocs/op
+BenchmarkVanilla-8    	 2000000	       849 ns/op	     288 B/op	      17 allocs/op
 ```
 
 Notes:
 
-Gongular is slower in these benchmarks because 1) it's a full framework with extra request wrapping code and 2) calculations and allocs that go into handling dependency injection in a way mid is able to avoid completely by keeping the handler separate from the binding object.
+Gongular is slower in these benchmarks because 1) it's a full framework with extra mux wrapping code and 2) calculations and allocs that go into handling dependency injection in a way mid is able to avoid completely by keeping the handler separate from the binding object.
 
-Echo is clearly the fastest, and also requires writing the most code. Unlike the other two, the echo benchmark does not include URL parameter binding giving it a slight boost. I'm worried I also missed something else giving it such a clear advantage.
+Echo is the fastest, but also requires writing the most code. Unlike the other two, the echo benchmark does not include URL parameter binding or standard response handling.
 
 
 ## HTML Templates

@@ -34,37 +34,6 @@ type JSONResponse struct {
 	Fields map[string]string `json:"fields,omitempty"`
 }
 
-// // HTTPRouterWrapper for use with julienschmidt/httprouter
-// func HTTPRouterWrapper() func(interface{}) httprouter.Handle {
-// 	return func(function interface{}) httprouter.Handle {
-// 		return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 			get := func(name string) string {
-// 				return ps.ByName(name)
-// 			}
-//
-// 			Wrap(function, w, r, get)
-// 		}
-// 	}
-// }
-//
-// // GorillaMuxWrapper for use with gorilla/mux
-// func GorillaMuxWrapper() func(interface{}) http.HandlerFunc {
-// 	return func(function interface{}) http.HandlerFunc {
-// 		return func(w http.ResponseWriter, r *http.Request) {
-// 			params := mux.Vars(r)
-//
-// 			get := func(name string) string {
-// 				if param, ok := params[name]; ok {
-// 					return param
-// 				}
-// 				return ""
-// 			}
-//
-// 			Wrap(function, w, r, get)
-// 		}
-// 	}
-// }
-
 // Hydrate and validate a http.Handler with input from HTTP GET/POST requests
 func Hydrate(function interface{}) http.HandlerFunc {
 
@@ -78,11 +47,19 @@ func Hydrate(function interface{}) http.HandlerFunc {
 	funcValue := reflect.ValueOf(function)
 
 	if funcType.NumIn() != 3 {
-		panic(errors.New("Wrap expects handler to have three arguments"))
+		panic(errors.New("mid.Hydrate expects handler to have three arguments"))
+	}
+
+	if funcType.NumOut() == 0 {
+		panic(errors.New("mid.Hydrate expects handler to return (error) or ({interface}, error)"))
 	}
 
 	// TODO more error checking here
 	paramType := funcType.In(2)
+
+	if paramType.Kind() == reflect.Ptr {
+		panic(errors.New("mid.Hydrate expect handler input use struct params, not struct pointers"))
+	}
 
 	structType := paramType
 	if paramType.Kind() == reflect.Ptr {
@@ -136,53 +113,21 @@ func Hydrate(function interface{}) http.HandlerFunc {
 		}
 
 		// Create a new instance for each goroutine
-		var object reflect.Value
+		// var object reflect.Value
+		// var oi interface{}
+		//
+		// We no longer support struct pointers as valid handler input
+		// switch paramType.Kind() {
+		// case reflect.Struct:
+		// 	object = newReflectType(paramType).Elem()
+		// 	oi = object.Addr().Interface()
+		// case reflect.Ptr:
+		// 	object = newReflectType(paramType)
+		// 	oi = object.Interface()
+		// }
 
-		switch paramType.Kind() {
-		case reflect.Struct:
-			object = newReflectType(paramType).Elem()
-		case reflect.Ptr:
-			object = newReflectType(paramType)
-		}
-
-		// All request types support looking for query and route params
-		numFields := structType.NumField()
-
-		queryValues := r.URL.Query()
-		for j := 0; j < numFields; j++ {
-			field := structType.Field(j)
-
-			var s string
-			var location string
-			// Look in the route parameters first
-			if tag, ok := field.Tag.Lookup(TagParam); ok {
-				s = params(tag)
-				location = "Route Parameter"
-			} else if tag, ok := field.Tag.Lookup(TagQuery); ok {
-				s = queryValues.Get(tag)
-				location = "Query Parameter"
-			} else {
-				s = queryValues.Get(field.Name)
-				location = "Query Parameter"
-			}
-
-			if s == "" {
-				continue
-			}
-
-			val := object.Field(j)
-
-			// TODO remove error handling since we only use govalidator's messages
-			err := parseSimpleParam(s, location, field, &val)
-			if err != nil {
-				// TODO ignore this since validation will handle this error
-				// fmt.Println("parseSimpleParam", err)
-
-				// Skip the rest of the input since this one field is invalid
-				// Saves resources - but produces less-useful error messages
-				break
-			}
-		}
+		object := newReflectType(paramType).Elem()
+		oi := object.Addr().Interface()
 
 		if r.Method == "POST" {
 
@@ -192,13 +137,11 @@ func Hydrate(function interface{}) http.HandlerFunc {
 			// r := io.LimitReader(r.Body, MaxBodySize)
 			// TODO should we check the r.Body type to see if it's a LimitedReader?
 
-			oi := object.Interface()
-
 			if r.Header.Get("Content-Type") == "application/json" {
 
 				// We don't care about JSON type errors nor want to give app details out
 				// The validator will handle those messages better below
-				_ = json.NewDecoder(r.Body).Decode(&oi)
+				_ = json.NewDecoder(r.Body).Decode(oi)
 
 				// The validator will handle those messages better below
 				// if err != nil {
@@ -245,8 +188,57 @@ func Hydrate(function interface{}) http.HandlerFunc {
 			}
 		}
 
+		// TODO: decoding order
+		// the encoding/json package does not overwrite existing struct values.
+		// (Proof: https://play.golang.org/p/aMEN66_P75w)
+		// However, we seem to be having issues with overwriting so we are placing
+		// the URL parameter & Query parameter parsing code *after* the body parsing
+		// This seems like an issue; attackers could craft query strings that would
+		// change what the client was posting. CSRF possible?
+
+		queryValues := r.URL.Query()
+		for j := 0; j < structType.NumField(); j++ {
+			field := structType.Field(j)
+
+			var s string
+			var location string
+			// Look in the route parameters first
+			if tag, ok := field.Tag.Lookup(TagParam); ok {
+				s = params(tag)
+				location = "Route Parameter"
+			} else if tag, ok := field.Tag.Lookup(TagQuery); ok {
+				s = queryValues.Get(tag)
+				location = "Query Parameter"
+			} else {
+				// Consider this case when deciding decoding order.
+				// In the two conditions above, we require the authors consideration.
+				// This is automatic and therefore more unsafe/unexpected.
+				s = queryValues.Get(field.Name)
+				location = "Query Parameter"
+			}
+
+			if s == "" {
+				continue
+			}
+
+			val := object.Field(j)
+
+			// TODO remove error handling since we only use govalidator's messages
+			err := parseSimpleParam(s, location, field, &val)
+			if err != nil {
+				// TODO ignore this since validation will handle this error
+				// fmt.Println("parseSimpleParam", err)
+
+				// Skip the rest of the input since this one field is invalid
+				// Saves resources - but produces less-useful error messages
+				break
+			}
+		}
+
+		// fmt.Printf("object.Interface(): %#v\n", object.Interface())
+
 		// 2. Validate the struct data rules
-		isValid, err := govalidator.ValidateStruct(object.Interface())
+		isValid, err := govalidator.ValidateStruct(oi)
 
 		if !isValid {
 			validationErrors := govalidator.ErrorsByField(err)

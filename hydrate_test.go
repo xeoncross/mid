@@ -27,16 +27,16 @@ type TestUserService struct {
 }
 
 // Test POST with JSON body
-func (s *TestUserService) Save(w http.ResponseWriter, r *http.Request, u *TestUser) (*TestUser, error) {
+func (s *TestUserService) Save(w http.ResponseWriter, r *http.Request, u TestUser) (TestUser, error) {
 	u.ID = s.Value
 	return u, nil
 }
 
 // Test GET with single URL param
 func (s *TestUserService) Get(w http.ResponseWriter, r *http.Request, params struct {
-	ID int `valid:"required"`
-}) (*TestUser, error) {
-	return &TestUser{Name: "John", ID: params.ID}, nil
+	ID int `valid:"required" query:"ID"`
+}) (TestUser, error) {
+	return TestUser{Name: "John", ID: params.ID}, nil
 }
 
 type ResultPage struct {
