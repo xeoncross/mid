@@ -21,22 +21,32 @@ For all user input you must define a struct that contains the expected fields an
 
 (We use [asaskevich/govalidator](https://github.com/asaskevich/govalidator#validatestruct-2) for validation.)
 
-		type InputComment struct {
-			PostID int `valid:"required" param:"post_id"`
+		type NewComment struct {
+			PostID  int    `valid:"required" param:"post_id"`
 			Comment string `valid:"required,stringlength(100|1000)"`
-			Email string `valid:"required,email"`
+			Email   string `valid:"required,email"`
 		}
 
 Next we write a http.HandlerFunc with _one extra field_: a reference to the `InputComment`:
 
-		handler := func(w http.ResponseWriter, r *http.Request, comment InputComment) error {
+		handler := func(w http.ResponseWriter, r *http.Request, comment NewComment) error {
 			// we now have access to populated fields like "comment.Email"
 			return nil
 		}
 
 We then wire this up to our router and are ready to start accepting input:
 
-    router.POST("/post/:post_id/comment", mid.Hydrate(handler))
+    // julienschmidt/httprouter
+		router.Handler("POST", "/post/:post_id/comment", mid.Hydrate(handler))
+
+		// gorilla/mux
+		router.HandleFunc("/post/{post_id}/comment", mid.Hydrate(handler)).Methods("POST")
+
+		// net/http
+		http.Handle("/post/comment", mid.Hydrate(handler))
+
+> Note: the net/http mux does not provide "route parameters" so the above example
+> won't actually pass the validation due to the PostID struct tag "param".
 
 At this point we can rest assured that our handler will never be called unless
 input matching our exact validation rules is provided by the client. If the
@@ -59,15 +69,15 @@ We follow a simpler version of the Google style for JSON API responses:
 What if you want to return data to the client? You can specify any type and it
 will be returned to the client packaged in a standard JSON wrapper.
 
-		handler := func(w http.ResponseWriter, r *http.Request, comment InputComment) (Comment, error) {
-			comment, err := commentService.Save(InputComment)
+		handler := func(w http.ResponseWriter, r *http.Request, newComment NewComment) (Comment, error) {
+			comment, err := commentService.Save(newComment)
 			return comment, err
 		}
 
 This will result in the following HTTP 200 response:
 
 		{
-			data: { ...Comment.fields here... }
+			data: { ...Comment fields here... }
 		}
 
 ### See the [examples](https://github.com/Xeoncross/mid/tree/master/examples) for more.
