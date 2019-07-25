@@ -1,11 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/xeoncross/mid"
@@ -13,14 +13,29 @@ import (
 
 const listenAddr = ":9000"
 
+// This is a simple, plain HTTP POST example that validates input and returns
+// JSON errors on failure or the new post ID on success. In the real world we
+// would be using Javascript to send an AJAX request and showing validation
+// errors on the offending form elements.
+//
+// Usage:
+//     go run main.go
+
 func main() {
 
 	// All the wiring of dependencies for the HTTP handlers/Controllers
 	c := &Controller{&PostService{}}
 
+	// Close connection with a 503 error if not handled within 3 seconds
+	throttler := mid.RequestThrottler(20, 3*time.Second)
+
+	wrapper := func(function interface{}) http.Handler {
+		return throttler(mid.MaxBodySize(mid.Hydrate(function), 1024*1024))
+	}
+
 	router := httprouter.New()
 	router.GET("/", c.homepage)
-	router.POST("/validate", mid.Validate(c.validate, &PostInput{}))
+	router.Handler("POST", "/validate", wrapper(c.validate))
 
 	fmt.Println("started on ", listenAddr)
 	err := http.ListenAndServe(listenAddr, router)
@@ -29,25 +44,23 @@ func main() {
 	}
 }
 
-// Post object
+// PostInput defines where we should look for the Post object (a HTTP Form)
 type Post struct {
+	ID      int    `json:"-"`
 	Title   string `valid:"alphanum,required"`
 	Email   string `valid:"email,required"`
 	Message string `valid:"ascii,required"`
 	Date    string `valid:"-"`
 }
 
-// PostInput defines where we should look for the Post object (a HTTP Form)
-type PostInput struct {
-	Form Post
-}
-
 // PostService handles CRUD for database
 type PostService struct{}
 
 // Save a new post
-func (ps *PostService) Save(p *Post) {
+func (ps *PostService) Save(p *Post) (int, error) {
 	fmt.Printf("Saving Post: %+v\n", p)
+	postID := 12
+	return postID, nil
 }
 
 // Controller provides all HTTP handlers with some shared dependencies
@@ -56,13 +69,8 @@ type Controller struct {
 }
 
 // Will only be called if the validation passes
-func (c *Controller) validate(w http.ResponseWriter, r *http.Request, in interface{}) {
-	p := in.(*PostInput)
-	c.postService.Save(&p.Form)
-
-	e := json.NewEncoder(w)
-	e.SetIndent("", "  ")
-	_ = e.Encode(in)
+func (c *Controller) validate(w http.ResponseWriter, r *http.Request, p Post) (int, error) {
+	return c.postService.Save(&p)
 }
 
 // Shows how to use templates with template functions and data
