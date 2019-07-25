@@ -27,7 +27,7 @@ For all user input you must define a struct that contains the expected fields an
 			Email   string `valid:"required,email"`
 		}
 
-Next we write a http.HandlerFunc with _one extra field_: a reference to the `InputComment`:
+Next we write a http.HandlerFunc with _one extra field_: a reference to the populated `NewComment`:
 
 		handler := func(w http.ResponseWriter, r *http.Request, comment NewComment) error {
 			// we now have access to populated fields like "comment.Email"
