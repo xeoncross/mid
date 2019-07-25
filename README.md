@@ -1,4 +1,4 @@
-# Mid [![Go Report Card](https://goreportcard.com/badge/github.com/xeoncross/mid)](https://goreportcard.com/report/github.com/xeoncross/mid) [![GoDoc](https://godoc.org/github.com/xeoncross/mid?status.svg)](https://godoc.org/github.com/xeoncross/mid) 
+# Mid [![Go Report Card](https://goreportcard.com/badge/github.com/xeoncross/mid)](https://goreportcard.com/report/github.com/xeoncross/mid) [![GoDoc](https://godoc.org/github.com/xeoncross/mid?status.svg)](https://godoc.org/github.com/xeoncross/mid)
 
 A `net/http` compatible middleware for protecting, validating, and automatically
 hydrating handlers with user input from JSON or multipart form bodies, route
@@ -21,29 +21,37 @@ For all user input you must define a struct that contains the expected fields an
 
 (We use [asaskevich/govalidator](https://github.com/asaskevich/govalidator#validatestruct-2) for validation.)
 
-		type NewComment struct {
-			PostID  int    `valid:"required" param:"post_id"`
-			Comment string `valid:"required,stringlength(100|1000)"`
-			Email   string `valid:"required,email"`
-		}
+```go
+type NewComment struct {
+	PostID  int    `valid:"required" param:"post_id"`
+	Comment string `valid:"required,stringlength(100|1000)"`
+	Email   string `valid:"required,email"`
+}
+```
+
+> Note: the "param" struct tag specifies a route parameter named "post_id" holds the value
 
 Next we write a http.HandlerFunc with _one extra field_: a reference to the *populated* `NewComment`:
 
-		handler := func(w http.ResponseWriter, r *http.Request, comment NewComment) error {
-			// we now have access to populated fields like "comment.Email"
-			return nil
-		}
+```go
+handler := func(w http.ResponseWriter, r *http.Request, comment NewComment) error {
+	// we now have access to populated fields like "comment.Email"
+	return nil
+}
+```
 
 We then wire this up to our router and are ready to start accepting input:
 
-		// julienschmidt/httprouter
-		router.Handler("POST", "/post/:post_id/comment", mid.Hydrate(handler))
+```go
+// julienschmidt/httprouter
+router.Handler("POST", "/post/:post_id/comment", mid.Hydrate(handler))
 
-		// gorilla/mux
-		router.HandleFunc("/post/{post_id}/comment", mid.Hydrate(handler)).Methods("POST")
+// gorilla/mux
+router.HandleFunc("/post/{post_id}/comment", mid.Hydrate(handler)).Methods("POST")
 
-		// net/http
-		http.Handle("/post/comment", mid.Hydrate(handler))
+// net/http
+http.Handle("/post/comment", mid.Hydrate(handler))
+```
 
 > Note: the last net/http mux example does not provide "route parameters" so it
 > won't actually pass the validation due to the PostID struct tag "param" not existing.
@@ -69,10 +77,12 @@ We follow a simpler version of the Google style for JSON API responses:
 What if you want to return data to the client? You can specify any type and it
 will be returned to the client packaged in a standard JSON wrapper.
 
-		handler := func(w http.ResponseWriter, r *http.Request, newComment NewComment) (Comment, error) {
-			comment, err := commentService.Save(newComment)
-			return comment, err
-		}
+```go
+handler := func(w http.ResponseWriter, r *http.Request, newComment NewComment) (Comment, error) {
+	comment, err := commentService.Save(newComment)
+	return comment, err
+}
+```
 
 This will result in the following HTTP 200 response:
 
@@ -95,16 +105,18 @@ requests your application instance will serve concurrently.
 
 It is recommended you create a helper function that wraps both these and the Hydration.
 
-		// Close connection with a 503 error if not handled within 3 seconds
-		throttler := mid.RequestThrottler(20, 3 * time.Second)
+```go
+// Close connection with a 503 error if not handled within 3 seconds
+throttler := mid.RequestThrottler(20, 3 * time.Second)
 
-		wrapper := func(function interface{}) http.Handlerfunc {
-			return throttler(mid.MaxBodySize(mid.Hydrate(function), 1024 * 1024))
-		}
+wrapper := func(function interface{}) http.Handlerfunc {
+	return throttler(mid.MaxBodySize(mid.Hydrate(function), 1024 * 1024))
+}
 
-		...
+...
 
-		mux.POST("/:user/profile", wrapper(controller.SaveProfile))
+router.Handler("POST", "/:user/profile", wrapper(controller.SaveProfile))
+```
 
 
 ## Supported Validations
@@ -125,11 +137,10 @@ BenchmarkMid-8        	  100000	     12607 ns/op	    7174 B/op	     120 allocs/o
 BenchmarkVanilla-8    	 2000000	       849 ns/op	     288 B/op	      17 allocs/op
 ```
 
-Notes:
 
 Gongular is slower in these benchmarks because 1) it's a full framework with extra mux wrapping code and 2) calculations and allocs that go into handling dependency injection in a way mid is able to avoid completely by keeping the handler separate from the binding object.
 
-Echo is the fastest, but also requires writing the most code. Unlike the other two, the echo benchmark does not include URL parameter binding or standard response handling.
+Echo is the fastest, but also requires writing the most code because it is less feature-complete. Unlike the other two, the echo benchmark does not include things like URL parameter binding or standard response handling.
 
 
 ## HTML Templates
