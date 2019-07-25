@@ -112,20 +112,7 @@ func Hydrate(function interface{}) http.HandlerFunc {
 			}
 		}
 
-		// Create a new instance for each goroutine
-		// var object reflect.Value
-		// var oi interface{}
-		//
-		// We no longer support struct pointers as valid handler input
-		// switch paramType.Kind() {
-		// case reflect.Struct:
-		// 	object = newReflectType(paramType).Elem()
-		// 	oi = object.Addr().Interface()
-		// case reflect.Ptr:
-		// 	object = newReflectType(paramType)
-		// 	oi = object.Interface()
-		// }
-
+		// Struct pointers are not allowed, so create a pointer to the struct
 		object := newReflectType(paramType).Elem()
 		oi := object.Addr().Interface()
 
@@ -227,15 +214,12 @@ func Hydrate(function interface{}) http.HandlerFunc {
 			err := parseSimpleParam(s, location, field, &val)
 			if err != nil {
 				// TODO ignore this since validation will handle this error
-				// fmt.Println("parseSimpleParam", err)
 
 				// Skip the rest of the input since this one field is invalid
 				// Saves resources - but produces less-useful error messages
 				break
 			}
 		}
-
-		// fmt.Printf("object.Interface(): %#v\n", object.Interface())
 
 		// 2. Validate the struct data rules
 		isValid, err := govalidator.ValidateStruct(oi)
