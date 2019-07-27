@@ -107,10 +107,10 @@ It is recommended you create a helper function that wraps both these and the Hyd
 
 ```go
 // Close connection with a 503 error if not handled within 3 seconds
-throttler := mid.RequestThrottler(20, 3 * time.Second)
+throttler := mid.RequestThrottler(20, 3*time.Second)
 
-wrapper := func(function interface{}) http.Handlerfunc {
-	return throttler(mid.MaxBodySize(mid.Hydrate(function), 1024 * 1024))
+wrapper := func(function interface{}) http.Handler {
+	return throttler(mid.MaxBodySize(mid.Hydrate(function), 1024*1024))
 }
 
 ...
