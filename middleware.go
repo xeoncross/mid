@@ -27,7 +27,7 @@ func RequestThrottler(concurrentRequests int, timeout time.Duration) func(http.H
 	}
 }
 
-// MaxRequestBody limits the size of the request body to avoid a DOS with a large JSON structure
+// MaxBodySize limits the size of the request body to avoid a DOS with a large JSON structure
 // Go does this internally for multipart bodies: https://golang.org/src/net/http/request.go#L1136
 func MaxBodySize(next http.Handler, size int64) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -38,7 +38,6 @@ func MaxBodySize(next http.Handler, size int64) http.Handler {
 
 // RequestCounter is useful for counting requests for logging
 func RequestCounter(duration time.Duration, callback func(uint64, chan struct{})) func(http.Handler) http.Handler {
-
 	closer := make(chan struct{})
 	var counter uint64
 
