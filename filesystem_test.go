@@ -107,6 +107,12 @@ func TestSpaFileSystem(t *testing.T) {
 			handler:  http.FileServer(spaFS),
 			response: javascriptResponse,
 		},
+		{
+			desc:     "javascript",
+			path:     "/js/",
+			handler:  http.FileServer(spaFS),
+			response: "404 page not found\n",
+		},
 	}
 
 	for _, tc := range testCases {

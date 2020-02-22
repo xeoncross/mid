@@ -23,7 +23,7 @@ import (
 // or directory listings. This file contains two http.FileSystem wrappers to
 // solve these need: SpaFileSystem() and DotFileHidingFileSystem()
 
-// FileSystem wrapper to send all 404 requests to index.html and hide dot files
+// FileSystem wrapper to send index.html to all non-existant paths and hide dot files
 func FileSystem(fs http.FileSystem) http.FileSystem {
 	return &dotFileHidingFileSystem{&spaFileSystem{fs}}
 }
@@ -49,63 +49,21 @@ func (fs *spaFileSystem) Open(name string) (http.File, error) {
 		return fs.root.Open("/index.html")
 	}
 
+	// TODO separate implementation?
 	// Do not allow directory browsing
 	s, err := f.Stat()
 	if err != nil {
 		f.Close()
-		return fs.root.Open("/index.html")
+		return nil, err
 	}
 
 	if s.IsDir() && name != "/" {
-		// fmt.Printf("\tOpen.D: isDir\n")
 		f.Close()
 		return nil, os.ErrNotExist
 	}
 
 	return f, err
 }
-
-// func (fs *spaFileSystem) Open(name string) (http.File, error) {
-
-// 	fmt.Printf("Open.A: %s\n", name)
-
-// 	// if name == "/index.html" || name == "/" {
-// 	// 	name = "index.html"
-// 	// }
-
-// 	f, err := fs.root.Open(name)
-// 	if os.IsNotExist(err) {
-// 		fmt.Printf("\tOpen.O: index.html\n")
-// 		return fs.root.Open("/index.html")
-// 	}
-
-// 	if err != nil {
-// 		fmt.Printf("\tOpen.E: %s\n", err)
-// 		return nil, err
-// 	}
-
-// 	// Don't close file from here unless
-// 	// doing something else
-// 	// defer f.Close()
-
-// 	// Do not allow directory browsing
-// 	s, err := f.Stat()
-// 	if err != nil {
-// 		fmt.Printf("\tOpen.S: %s\n", err)
-// 		// return f, err
-// 		f.Close()
-// 		return fs.root.Open("/index.html")
-// 	}
-
-// 	if s.IsDir() && name != "/" {
-// 		fmt.Printf("\tOpen.D: isDir\n")
-// 		f.Close()
-// 		return nil, os.ErrNotExist
-// 	}
-
-// 	fmt.Printf("Open.B: %s -> %v\n", name, s.Name())
-// 	return f, err
-// }
 
 // DotFileHidingFileSystem is an http.FileSystem that hides "dot files" from being served.
 //
