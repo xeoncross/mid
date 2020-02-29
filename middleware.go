@@ -59,3 +59,18 @@ func RequestCounter(duration time.Duration, callback func(uint64, chan struct{})
 		})
 	}
 }
+
+// MustQueryParams circit breaker middleware only forwards requests which
+// have the specified query params set
+func MustQueryParams(h http.Handler, params ...string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		for _, param := range params {
+			if q.Get(param) == "" {
+				http.Error(w, "missing "+param, http.StatusBadRequest)
+				return // exit early
+			}
+		}
+		h.ServeHTTP(w, r) // all params present, proceed
+	})
+}
