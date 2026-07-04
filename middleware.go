@@ -1,10 +1,28 @@
 package mid
 
 import (
+	"context"
 	"net/http"
-	"sync/atomic"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
+
+// InterruptContext listing for os.Signal (i.e. CTRL+C) to cancel a
+// context and end a server/daemon gracefully
+func InterruptContext() context.Context {
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		<-quit
+		cancel()
+	}()
+
+	return ctx
+}
 
 // RequestThrottler creates a re-usable limiter for multiple http.Handlers
 // If the server is too busy to handle the request within the timeout, then
@@ -34,30 +52,6 @@ func MaxBodySize(next http.Handler, size int64) http.Handler {
 		r.Body = http.MaxBytesReader(w, r.Body, size)
 		next.ServeHTTP(w, r)
 	})
-}
-
-// RequestCounter is useful for counting requests for logging
-func RequestCounter(duration time.Duration, callback func(uint64, chan struct{})) func(http.Handler) http.Handler {
-	closer := make(chan struct{})
-	var counter uint64
-
-	go func() {
-		for {
-			select {
-			case <-closer:
-				return
-			case <-time.After(duration):
-				callback(atomic.SwapUint64(&counter, 0), closer)
-			}
-		}
-	}()
-
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			atomic.AddUint64(&counter, 1)
-			next.ServeHTTP(w, r)
-		})
-	}
 }
 
 // MustQueryParams circit breaker middleware only forwards requests which
