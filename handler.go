@@ -13,13 +13,48 @@ import (
 var ErrJSONInvalid = errors.New("invalid JSON")
 
 // Default error response format
-type JSONError struct{ Error string }
+type JSONError struct {
+	Error string `json:"error"`
+}
+
+// FieldError is one failed validation constraint, projected from
+// validator.FieldError (whose data is only reachable via methods, so it would
+// otherwise marshal to an empty object). It tells the client which field
+// failed, which rule it violated, and a human-readable message.
+type FieldError struct {
+	Field   string `json:"field"`   // namespaced path, e.g. "User.Address.Street"
+	Tag     string `json:"tag"`     // constraint that failed, e.g. "required", "email"
+	Message string `json:"message"` // human-readable summary of the failure
+}
+
+// ValidationErrors is the response body sent when struct validation fails.
+type ValidationErrors struct {
+	Errors []FieldError `json:"errors"`
+}
+
+// newValidationErrors projects validator.ValidationErrors into a
+// JSON-serializable response the client can act on.
+func newValidationErrors(errs validator.ValidationErrors) ValidationErrors {
+	out := ValidationErrors{Errors: make([]FieldError, len(errs))}
+	for i, fe := range errs {
+		msg := fmt.Sprintf("failed '%s' validation", fe.Tag())
+		if fe.Param() != "" {
+			msg = fmt.Sprintf("%s (%s)", msg, fe.Param())
+		}
+		out.Errors[i] = FieldError{
+			Field:   fe.Namespace(),
+			Tag:     fe.Tag(),
+			Message: msg,
+		}
+	}
+	return out
+}
 
 // Global instance shared across all validators, todo: find DI solution
 var ValidatorInstance *validator.Validate
 
 // Any handler that accepts an input struct and returns an error and value
-type HandlerFunc[T any] func(input T) (error, any)
+type HandlerFunc[T any] func(input T) (any, error)
 
 // Validation callback
 type Validator[T any] func(w http.ResponseWriter, r *http.Request, input T) bool
@@ -48,7 +83,7 @@ func Handler[T any](handler HandlerFunc[T], decode Decoder[*T], validate Validat
 		}
 
 		// Finally call handler
-		err, response := handler(input)
+		response, err := handler(input)
 		if err != nil {
 			onErr(w, r, err)
 			return
@@ -72,7 +107,7 @@ func StructValidator[T any](w http.ResponseWriter, r *http.Request, input T) boo
 	if err != nil {
 		if validateErrs, ok := errors.AsType[validator.ValidationErrors](err); ok {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(validateErrs)
+			json.NewEncoder(w).Encode(newValidationErrors(validateErrs))
 			return false
 		}
 		// todo: JSONErrorHandler needs to be provided, not manually inserted
