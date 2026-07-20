@@ -88,7 +88,7 @@ func TestHandlerResponses(t *testing.T) {
 			name:     "unmarshalTypeError",
 			body:     `{"name": 123}`,
 			wantCode: http.StatusBadRequest,
-			wantBody: `{"error":"Unexpected type 'number' for field 'Name': invalid JSON"}` + "\n",
+			wantBody: `{"error":"unexpected type 'number' for field 'Name': invalid JSON"}` + "\n",
 		},
 	}
 

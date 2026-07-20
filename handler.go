@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 
 	"log"
 
@@ -13,6 +14,9 @@ import (
 
 // ErrJSONInvalid returned for all JSON decoding errors
 var ErrJSONInvalid = errors.New("invalid JSON")
+
+// TagParamName
+var TagParamName = "query"
 
 // JSONError error response format
 type JSONError struct {
@@ -109,12 +113,26 @@ func Handler[T any](handler HandlerFunc[T], opts ...Option[T]) http.Handler {
 		opt(&s)
 	}
 
+	var temp T
+	tags, err := scanFields(reflect.TypeOf(temp), TagParamName)
+	if err != nil {
+		panic(err)
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// JSON is the only supported transport
 		w.Header().Set("Content-Type", "application/json")
 
 		var input T
 
+		// URL parameters are set first
+		err := applyQueryParams(r, &input, tags)
+		if err != nil {
+			s.onErr(w, r, input, err)
+			return
+		}
+
+		// request body overwrites on key clash
 		if !s.decode(w, r, &input) {
 			return
 		}
