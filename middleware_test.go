@@ -17,7 +17,7 @@ func TestHandlerWithMaxBodySizeExceeded(t *testing.T) {
 	buf := bytes.NewBufferString(largePayload)
 	request := httptest.NewRequest(http.MethodPost, "/user", buf)
 
-	handler := Handler(UserHandler, JSONDecoder, StructValidator, JSONErrorHandler)
+	handler := Handler(UserHandler)
 	limitedHandler := MaxBodySize(handler, 32)
 
 	limitedHandler.ServeHTTP(recorder, request)

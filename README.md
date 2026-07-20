@@ -14,16 +14,16 @@ go get github.com/xeoncross/mid
 
 ## Handler[T] Usage
 
-The core function is `Handler[T]`, which takes four parameters and returns an `http.Handler`:
+The core function is `Handler[T]`, which takes your handler plus any number of optional overrides and returns an `http.Handler`:
 
 ```go
 func Handler[T any](
-    handler HandlerFunc[T],   // Your business logic
-    decode  Decoder[*T],      // JSON decoder
-    validate Validator[T],    // Struct validator
-    onErr   ErrorHandler,     // Error handler
+    handler HandlerFunc[T], // Your business logic
+    opts    ...Option[T],   // Optional overrides (see Options below)
 ) http.Handler
 ```
+
+With no options, `Handler` decodes JSON with `JSONDecoder`, validates with `StructValidator`, and reports errors with `JSONErrorHandler` — the three defaults every endpoint needs, without having to name them.
 
 ### HandlerFunc[T]
 
@@ -61,6 +61,7 @@ type CreateUserResponse struct {
 
 // Your handler logic
 func createUser(input CreateUserInput) (error, any) {
+    // 'input' is auto-populated and passed validation
     // ... business logic here ...
     return nil, CreateUserResponse{
         ID:     123,
@@ -71,13 +72,9 @@ func createUser(input CreateUserInput) (error, any) {
 func main() {
     mux := http.NewServeMux()
 
-    // Register the endpoint
-    mux.Handle("/users", mid.Handler(
-        createUser,                          // Your handler
-        mid.JSONDecoder[CreateUserInput],    // Decode JSON body
-        mid.StructValidator[CreateUserInput],// Validate struct
-        mid.JSONErrorHandler,                // Handle errors
-    ))
+    // Register the endpoint - decode, validate, and error handling all
+    // default to the package helpers
+    mux.Handle("/users", mid.Handler(createUser))
 
     server := &http.Server{
         Addr:    ":8080",
@@ -86,6 +83,33 @@ func main() {
 
     server.ListenAndServe()
 }
+```
+
+### Options
+
+Each default can be overridden individually by passing an `Option[T]` to `Handler`. Unlisted overrides keep their default.
+
+```go
+// Override just the validator
+mux.Handle("/users", mid.Handler(createUser, mid.WithValidator(myValidator)))
+
+// Override several at once
+mux.Handle("/users", mid.Handler(createUser,
+    mid.WithDecoder(myDecoder),
+    mid.WithValidator(myValidator),
+))
+```
+
+| Option | Overrides | Signature |
+|---|---|---|
+| `WithDecoder` | `JSONDecoder` | `func WithDecoder[T any](d Decoder[*T]) Option[T]` |
+| `WithValidator` | `StructValidator` | `func WithValidator[T any](v Validator[T]) Option[T]` |
+| `WithErrorHandler` | `JSONErrorHandler` | `func WithErrorHandler[T any](e ErrorHandler[T]) Option[T]` |
+
+`WithDecoder` and `WithValidator` infer `T` from the function you pass in, so no type argument is needed. `ErrorHandler[T]` doesn't use `T` in its own signature, so when `WithErrorHandler` is the *only* option on a call, Go can't infer it from context and you need to spell it out:
+
+```go
+mux.Handle("/users", mid.Handler(createUser, mid.WithErrorHandler[CreateUserInput](myErrorHandler)))
 ```
 
 ## Components
@@ -190,7 +214,7 @@ func myValidator[T any](w http.ResponseWriter, r *http.Request, input T) bool {
 }
 
 // Usage
-mid.Handler(myHandler, myDecoder, myValidator, mid.JSONErrorHandler)
+mid.Handler(myHandler, mid.WithDecoder(myDecoder), mid.WithValidator(myValidator))
 ```
 
 ## License

@@ -37,6 +37,7 @@ type ValidationErrors struct {
 func newValidationErrors(errs validator.ValidationErrors) ValidationErrors {
 	out := ValidationErrors{Errors: make([]FieldError, len(errs))}
 	for i, fe := range errs {
+		// fe.Error() == "Field validation for '%s' failed on the '%s' tag"
 		msg := fmt.Sprintf("failed '%s' validation", fe.Tag())
 		if fe.Param() != "" {
 			msg = fmt.Sprintf("%s (%s)", msg, fe.Param())
@@ -51,7 +52,7 @@ func newValidationErrors(errs validator.ValidationErrors) ValidationErrors {
 }
 
 // Global instance shared across all validators, todo: find DI solution
-var ValidatorInstance *validator.Validate
+var ValidatorInstance *validator.Validate = validator.New()
 
 // Any handler that accepts an input struct and returns an error and value
 type HandlerFunc[T any] func(input T) (any, error)
@@ -63,36 +64,75 @@ type Validator[T any] func(w http.ResponseWriter, r *http.Request, input T) bool
 type Decoder[T any] func(w http.ResponseWriter, r *http.Request, input T) bool
 
 // Handle failure at any point
-type ErrorHandler func(w http.ResponseWriter, r *http.Request, err error)
+type ErrorHandler[T any] func(w http.ResponseWriter, r *http.Request, input T, err error)
 
-// Wrap handler to handle input hydration and response JSON
-func Handler[T any](handler HandlerFunc[T], decode Decoder[*T], validate Validator[T], onErr ErrorHandler) http.Handler {
+// settings collects the pieces Handler needs. It starts from the package
+// defaults and is then customized by any Option passed to Handler.
+type settings[T any] struct {
+	decode   Decoder[*T]
+	validate Validator[T]
+	onErr    ErrorHandler[T]
+}
+
+// Option customizes a single Handler call. See WithDecoder, WithValidator,
+// and WithErrorHandler.
+type Option[T any] func(*settings[T])
+
+// WithDecoder overrides the default JSONDecoder for one Handler call.
+func WithDecoder[T any](d Decoder[*T]) Option[T] {
+	return func(s *settings[T]) { s.decode = d }
+}
+
+// WithValidator overrides the default StructValidator for one Handler call.
+func WithValidator[T any](v Validator[T]) Option[T] {
+	return func(s *settings[T]) { s.validate = v }
+}
+
+// WithErrorHandler overrides the default JSONErrorHandler for one Handler call.
+func WithErrorHandler[T any](e ErrorHandler[T]) Option[T] {
+	return func(s *settings[T]) { s.onErr = e }
+}
+
+// Wrap handler to handle input hydration and response JSON. Decoding,
+// validation, and error handling default to JSONDecoder, StructValidator,
+// and JSONErrorHandler; override any of them individually with
+// WithDecoder/WithValidator/WithErrorHandler.
+func Handler[T any](handler HandlerFunc[T], opts ...Option[T]) http.Handler {
+	s := settings[T]{
+		decode:   JSONDecoder[T],
+		validate: StructValidator[T],
+		onErr:    JSONErrorHandler[T],
+	}
+	for _, opt := range opts {
+		opt(&s)
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// JSON is the only supported transport
 		w.Header().Set("Content-Type", "application/json")
 
 		var input T
 
-		if !decode(w, r, &input) {
+		if !s.decode(w, r, &input) {
 			return
 		}
 
 		// Validate must handle reporting errors to the client
-		if !validate(w, r, input) {
+		if !s.validate(w, r, input) {
 			return
 		}
 
 		// Finally call handler
 		response, err := handler(input)
 		if err != nil {
-			onErr(w, r, err)
+			s.onErr(w, r, input, err)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
 		err = json.NewEncoder(w).Encode(response)
 		if err != nil {
-			onErr(w, r, err)
+			s.onErr(w, r, input, err)
 			return
 		}
 	})
@@ -100,9 +140,6 @@ func Handler[T any](handler HandlerFunc[T], decode Decoder[*T], validate Validat
 
 // StructValidator uses Handler[T] type to run validation on struct pointer
 func StructValidator[T any](w http.ResponseWriter, r *http.Request, input T) bool {
-	if ValidatorInstance == nil {
-		ValidatorInstance = validator.New()
-	}
 	err := ValidatorInstance.Struct(input)
 	if err != nil {
 		if validateErrs, ok := errors.AsType[validator.ValidationErrors](err); ok {
@@ -111,13 +148,13 @@ func StructValidator[T any](w http.ResponseWriter, r *http.Request, input T) boo
 			return false
 		}
 		// todo: JSONErrorHandler needs to be provided, not manually inserted
-		JSONErrorHandler(w, r, err)
+		JSONErrorHandler(w, r, input, err)
 		return false
 	}
 	return true
 }
 
-func JSONErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
+func JSONErrorHandler[T any](w http.ResponseWriter, r *http.Request, input T, err error) {
 	w.WriteHeader(http.StatusBadRequest)
 	json.NewEncoder(w).Encode(JSONError{err.Error()})
 }
@@ -141,7 +178,7 @@ func JSONDecoder[T any](w http.ResponseWriter, r *http.Request, input *T) bool {
 			err = ErrJSONInvalid // all other failures are a generic message
 		}
 		// todo: DI
-		JSONErrorHandler(w, r, err)
+		JSONErrorHandler(w, r, input, err)
 		return false
 	}
 	return true

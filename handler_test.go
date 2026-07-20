@@ -32,6 +32,31 @@ func serve(h http.Handler, body string) *httptest.ResponseRecorder {
 	return recorder
 }
 
+// Here is an example of a struct with one or more handlers
+type UserController struct {
+	// Perhaps you have logging or database connections to share with handlers
+	value string
+}
+
+// implements Handler[T any]
+func (uc *UserController) IndexHandler(u User) (any, error) {
+	u.Name = uc.value
+	return u, nil
+}
+
+func TestHandlerStruct(t *testing.T) {
+	h := UserController{value: "demo"}
+	handler := Handler(h.IndexHandler)
+	recorder := serve(handler, `{"name":"input"}`)
+
+	if recorder.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d: %s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if recorder.Body.String() != `{"Name":"demo"}`+"\n" {
+		t.Errorf("unexpected response: %s", recorder.Body.String())
+	}
+}
+
 // TestHandlerResponses covers the request -> (status, body) contract across
 // the happy path and the JSONDecoder/StructValidator error branches that
 // surface a response body directly.
@@ -67,7 +92,7 @@ func TestHandlerResponses(t *testing.T) {
 		},
 	}
 
-	handler := Handler(UserHandler, JSONDecoder, StructValidator, JSONErrorHandler)
+	handler := Handler(UserHandler)
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -86,7 +111,7 @@ func TestHandlerResponses(t *testing.T) {
 // TestHandlerWithNilResponse covers a handler that returns a nil response
 // value, which json.Encode renders as JSON null.
 func TestHandlerWithNilResponse(t *testing.T) {
-	handler := Handler(UserHandlerNilResponse, JSONDecoder, StructValidator, JSONErrorHandler)
+	handler := Handler(UserHandlerNilResponse)
 	recorder := serve(handler, `{"name":"example"}`)
 
 	if recorder.Code != http.StatusOK {
@@ -100,7 +125,7 @@ func TestHandlerWithNilResponse(t *testing.T) {
 // TestHandlerSetsContentType verifies Content-Type is set to application/json
 // before decoding even begins (here decoding fails on malformed JSON).
 func TestHandlerSetsContentType(t *testing.T) {
-	handler := Handler(UserHandler, JSONDecoder, StructValidator, JSONErrorHandler)
+	handler := Handler(UserHandler)
 	recorder := serve(handler, `{bad json}`)
 
 	if contentType := recorder.Header().Get("Content-Type"); contentType != "application/json" {
@@ -109,7 +134,7 @@ func TestHandlerSetsContentType(t *testing.T) {
 }
 
 func BenchmarkHandlerWithType(b *testing.B) {
-	handler := Handler(UserHandler, JSONDecoder, StructValidator, JSONErrorHandler)
+	handler := Handler(UserHandler)
 
 	for i := 0; i < b.N; i++ {
 		recorder := serve(handler, `{"name":"example"}`)
@@ -164,7 +189,7 @@ func TestValidatorRejectsInput(t *testing.T) {
 		return u, nil
 	}
 
-	handler := Handler(handlerFunc, JSONDecoder, StructValidator, JSONErrorHandler)
+	handler := Handler(handlerFunc)
 	recorder := serve(handler, `{}`)
 
 	if handlerCalled {
@@ -192,7 +217,7 @@ type AddressBook struct {
 func TestValidatorRejectsNestedInput(t *testing.T) {
 	handlerFunc := func(a AddressBook) (any, error) { return a, nil }
 
-	handler := Handler(handlerFunc, JSONDecoder, StructValidator, JSONErrorHandler)
+	handler := Handler(handlerFunc)
 	recorder := serve(handler, `{"Street":"","Zip":"12"}`)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -229,14 +254,14 @@ func TestHandlerShortCircuits(t *testing.T) {
 		{
 			"failingDecoder",
 			func(h HandlerFunc[User]) http.Handler {
-				return Handler(h, failingDecoder, StructValidator, JSONErrorHandler)
+				return Handler(h, WithDecoder(failingDecoder))
 			},
 			http.StatusUnauthorized, "decoder rejected\n",
 		},
 		{
 			"failingValidator",
 			func(h HandlerFunc[User]) http.Handler {
-				return Handler(h, JSONDecoder, failingValidator, JSONErrorHandler)
+				return Handler(h, WithValidator(failingValidator))
 			},
 			http.StatusForbidden, "validation failed\n",
 		},
@@ -272,13 +297,13 @@ func TestHandlerReturnsError(t *testing.T) {
 	errorHandlerCalled := false
 	var capturedError error
 
-	customErrHandler := func(w http.ResponseWriter, r *http.Request, err error) {
+	customErrHandler := ErrorHandler[User](func(w http.ResponseWriter, r *http.Request, input User, err error) {
 		errorHandlerCalled = true
 		capturedError = err
 		w.WriteHeader(http.StatusInternalServerError)
-	}
+	})
 
-	handler := Handler(UserHandlerWithError, JSONDecoder, StructValidator, customErrHandler)
+	handler := Handler(UserHandlerWithError, WithErrorHandler(customErrHandler))
 	recorder := serve(handler, `{"name":"example"}`)
 
 	if !errorHandlerCalled {
@@ -324,10 +349,10 @@ func TestHandlerWithWriteErrorDuringResponse(t *testing.T) {
 	errorHandlerCalled := false
 	var capturedError error
 
-	customErrHandler := func(w http.ResponseWriter, r *http.Request, err error) {
+	customErrHandler := ErrorHandler[User](func(w http.ResponseWriter, r *http.Request, input User, err error) {
 		errorHandlerCalled = true
 		capturedError = err
-	}
+	})
 
 	recorder := &errorWriter{
 		ResponseRecorder: *httptest.NewRecorder(),
@@ -335,7 +360,7 @@ func TestHandlerWithWriteErrorDuringResponse(t *testing.T) {
 	}
 	request := httptest.NewRequest(http.MethodGet, "/user", bytes.NewBufferString(`{"name":"example"}`))
 
-	handler := Handler(UserHandler, JSONDecoder, StructValidator, customErrHandler)
+	handler := Handler(UserHandler, WithErrorHandler(customErrHandler))
 	handler.ServeHTTP(recorder, request)
 
 	if !errorHandlerCalled {
@@ -374,7 +399,7 @@ func TestHandlerWriteHeaderOnce(t *testing.T) {
 			recorder := &headerCountWriter{ResponseRecorder: *httptest.NewRecorder()}
 			request := httptest.NewRequest(http.MethodGet, "/user", bytes.NewBufferString(`{"name":"example"}`))
 
-			handler := Handler(c.handler, JSONDecoder, StructValidator, JSONErrorHandler)
+			handler := Handler(c.handler)
 			handler.ServeHTTP(recorder, request)
 
 			if recorder.headerCount != 1 {
