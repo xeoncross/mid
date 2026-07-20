@@ -6,13 +6,15 @@ import (
 	"fmt"
 	"net/http"
 
+	"log"
+
 	"github.com/go-playground/validator/v10"
 )
 
-// Returned for all JSON decoding errors
+// ErrJSONInvalid returned for all JSON decoding errors
 var ErrJSONInvalid = errors.New("invalid JSON")
 
-// Default error response format
+// JSONError error response format
 type JSONError struct {
 	Error string `json:"error"`
 }
@@ -51,19 +53,19 @@ func newValidationErrors(errs validator.ValidationErrors) ValidationErrors {
 	return out
 }
 
-// Global instance shared across all validators, todo: find DI solution
+// ValidatorInstance instance shared across all validators
 var ValidatorInstance *validator.Validate = validator.New()
 
-// Any handler that accepts an input struct and returns an error and value
+// HandlerFunc accepts an input struct and returns a value and error
 type HandlerFunc[T any] func(input T) (any, error)
 
-// Validation callback
+// Validator callback for request input
 type Validator[T any] func(w http.ResponseWriter, r *http.Request, input T) bool
 
-// Decode request to input struct
+// Decoder request to input struct
 type Decoder[T any] func(w http.ResponseWriter, r *http.Request, input T) bool
 
-// Handle failure at any point
+// ErrorHandler for failure at any point
 type ErrorHandler[T any] func(w http.ResponseWriter, r *http.Request, input T, err error)
 
 // settings collects the pieces Handler needs. It starts from the package
@@ -93,7 +95,7 @@ func WithErrorHandler[T any](e ErrorHandler[T]) Option[T] {
 	return func(s *settings[T]) { s.onErr = e }
 }
 
-// Wrap handler to handle input hydration and response JSON. Decoding,
+// Handler wrapper for input hydration and response JSON. Decoding,
 // validation, and error handling default to JSONDecoder, StructValidator,
 // and JSONErrorHandler; override any of them individually with
 // WithDecoder/WithValidator/WithErrorHandler.
@@ -144,7 +146,10 @@ func StructValidator[T any](w http.ResponseWriter, r *http.Request, input T) boo
 	if err != nil {
 		if validateErrs, ok := errors.AsType[validator.ValidationErrors](err); ok {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(newValidationErrors(validateErrs))
+			err = json.NewEncoder(w).Encode(newValidationErrors(validateErrs))
+			if err != nil {
+				log.Println(err)
+			}
 			return false
 		}
 		// todo: JSONErrorHandler needs to be provided, not manually inserted
@@ -154,11 +159,16 @@ func StructValidator[T any](w http.ResponseWriter, r *http.Request, input T) boo
 	return true
 }
 
+// JSONErrorHandler returns a JSON encoded {error: ...} body
 func JSONErrorHandler[T any](w http.ResponseWriter, r *http.Request, input T, err error) {
 	w.WriteHeader(http.StatusBadRequest)
-	json.NewEncoder(w).Encode(JSONError{err.Error()})
+	err = json.NewEncoder(w).Encode(JSONError{err.Error()})
+	if err != nil {
+		log.Println(err)
+	}
 }
 
+// JSONDecoder decodes from the http request.Body into the given input pointer
 func JSONDecoder[T any](w http.ResponseWriter, r *http.Request, input *T) bool {
 	// A failure here is 1) a developer mistake or 2) malicious actor. It is
 	// okay to inform both as they both can already discover the correct
@@ -171,7 +181,7 @@ func JSONDecoder[T any](w http.ResponseWriter, r *http.Request, input *T) bool {
 		switch e := err.(type) {
 		// json: cannot unmarshal string into Go struct field A.Foo of type string
 		case *json.UnmarshalTypeError:
-			err = fmt.Errorf("Unexpected type '%s' for field '%s': %w", e.Value, e.Field, ErrJSONInvalid)
+			err = fmt.Errorf("unexpected type '%s' for field '%s': %w", e.Value, e.Field, ErrJSONInvalid)
 		case *json.InvalidUnmarshalError:
 			break // developer mistake, the argument to Unmarshal must be a non-nil pointer, leave as-is
 		default:
