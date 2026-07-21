@@ -12,53 +12,16 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+// ErrHandlerInputType runtime error for handlers without a struct input
+var ErrHandlerInputType = errors.New("handler input must be a struct")
+
 // ErrJSONInvalid returned for all JSON decoding errors
 var ErrJSONInvalid = errors.New("invalid JSON")
-
-// TagParamName
-var TagParamName = "query"
 
 // JSONError error response format
 type JSONError struct {
 	Error string `json:"error"`
 }
-
-// FieldError is one failed validation constraint, projected from
-// validator.FieldError (whose data is only reachable via methods, so it would
-// otherwise marshal to an empty object). It tells the client which field
-// failed, which rule it violated, and a human-readable message.
-type FieldError struct {
-	Field   string `json:"field"`   // namespaced path, e.g. "User.Address.Street"
-	Tag     string `json:"tag"`     // constraint that failed, e.g. "required", "email"
-	Message string `json:"message"` // human-readable summary of the failure
-}
-
-// ValidationErrors is the response body sent when struct validation fails.
-type ValidationErrors struct {
-	Errors []FieldError `json:"errors"`
-}
-
-// newValidationErrors projects validator.ValidationErrors into a
-// JSON-serializable response the client can act on.
-func newValidationErrors(errs validator.ValidationErrors) ValidationErrors {
-	out := ValidationErrors{Errors: make([]FieldError, len(errs))}
-	for i, fe := range errs {
-		// fe.Error() == "Field validation for '%s' failed on the '%s' tag"
-		msg := fmt.Sprintf("failed '%s' validation", fe.Tag())
-		if fe.Param() != "" {
-			msg = fmt.Sprintf("%s (%s)", msg, fe.Param())
-		}
-		out.Errors[i] = FieldError{
-			Field:   fe.Namespace(),
-			Tag:     fe.Tag(),
-			Message: msg,
-		}
-	}
-	return out
-}
-
-// ValidatorInstance instance shared across all validators
-var ValidatorInstance *validator.Validate = validator.New()
 
 // HandlerFunc accepts an input struct and returns a value and error
 type HandlerFunc[T any] func(input T) (any, error)
@@ -113,11 +76,13 @@ func Handler[T any](handler HandlerFunc[T], opts ...Option[T]) http.Handler {
 		opt(&s)
 	}
 
-	var temp T
-	tags, err := scanFields(reflect.TypeOf(temp), TagParamName)
-	if err != nil {
-		panic(err)
+	var inputType T
+	t := reflect.TypeOf(inputType)
+	if t.Kind() != reflect.Struct {
+		log.Fatal(fmt.Errorf("unexpected %s: %w", t.Kind(), ErrHandlerInputType))
 	}
+
+	tags := scanFields(t, FieldQuery)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// JSON is the only supported transport

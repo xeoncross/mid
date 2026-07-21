@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -406,5 +407,37 @@ func TestHandlerWriteHeaderOnce(t *testing.T) {
 				t.Errorf("expected WriteHeader to be called exactly once, got %d", recorder.headerCount)
 			}
 		})
+	}
+}
+
+type SampleInput struct {
+	Name    string
+	Title   string `valid:"alphanum,required"`
+	Email   string `valid:"email,required"`
+	Message string `valid:"ascii,required"`
+	Date    string `valid:"-"`
+}
+
+func BenchmarkMid(b *testing.B) {
+
+	handler := Handler(func(in SampleInput) (any, error) {
+		in.Name = "mid"
+		return in, nil
+	})
+
+	data := `{"Title":"FooBar","Email":"email@example.com","Message":"Hello there","Date":"yes"}`
+
+	for n := 0; n < b.N; n++ {
+		rr := httptest.NewRecorder()
+		req, err := http.NewRequest("POST", "/", strings.NewReader(data))
+		if err != nil {
+			b.Fatal(err)
+		}
+		handler.ServeHTTP(rr, req)
+
+		expected := `{"Name":"mid","Title":"FooBar","Email":"email@example.com","Message":"Hello there","Date":"yes"}`
+		if expected != strings.TrimSpace(rr.Body.String()) {
+			b.Errorf("expected %s, got %s", expected, strings.TrimSpace(rr.Body.String()))
+		}
 	}
 }

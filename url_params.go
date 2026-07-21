@@ -7,6 +7,9 @@ import (
 	"strconv"
 )
 
+// FieldQuery defines the struct field name for looking up query parameters
+var FieldQuery = "query"
+
 // fieldTag pairs a struct field's index with the tag value used to look it
 // up in the request, so the field can later be found with Field(Index)
 // without re-walking the struct type, re-reading its tags, or comparing
@@ -19,11 +22,7 @@ type fieldTag struct {
 
 // ScanFields walks t once and records the exported fields that carry a tagKey
 // tag.
-func scanFields(t reflect.Type, tagKey string) ([]fieldTag, error) {
-	if t.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("expected a struct, got %s", t.Kind())
-	}
-
+func scanFields(t reflect.Type, tagKey string) []fieldTag {
 	fields := make([]fieldTag, 0, t.NumField())
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
@@ -41,7 +40,7 @@ func scanFields(t reflect.Type, tagKey string) ([]fieldTag, error) {
 		fields = append(fields, fieldTag{Name: field.Name, Tag: tagValue, Index: i})
 	}
 
-	return fields, nil
+	return fields
 }
 
 // ApplyQueryParams matches tags against query parameters found in
