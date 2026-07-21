@@ -1,6 +1,26 @@
 # Mid
 
-A tiny, fast HTTP middleware for creating JSON APIs with automatic input validation using Go generics.
+A tiny, fast HTTP middleware for creating JSON APIs with automatic input validation.
+
+```go
+type Input struct {
+    Name  string `json:"name" validate:"required"`
+    Email string `json:"email" validate:"required,email"`
+}
+
+type Output struct {
+    ID int `json:"id"`
+}
+
+// Your handler logic
+func createUser(input Input) (any, error) {
+    // 'input' is auto-populated and passed validation
+    // ... business logic here ...
+    return Output{ ID: 123 }, nil
+}
+```
+
+The most ergonomic way to quickly spin up fast HTTP endpoints for building JSON API's in Go. [Benchmarks can be found here](https://github.com/xeoncross/mid-benchmarks).
 
 ## Installation
 
@@ -8,13 +28,12 @@ A tiny, fast HTTP middleware for creating JSON APIs with automatic input validat
 go get github.com/xeoncross/mid
 ```
 
+
 ## Overview
 
 `mid` provides a generic `Handler[T]` function that wraps your business logic into a standard `http.Handler`. It automatically handles JSON decoding, struct validation, and error responses, allowing you to focus on your application logic.
 
-## Handler[T] Usage
-
-The core function is `Handler[T]`, which takes your handler plus any number of optional overrides and returns an `http.Handler`:
+The core function is `Handler[T]`, which takes your handler plus any number of optional overrides and returns a `http.Handler`:
 
 ```go
 func Handler[T any](
@@ -22,19 +41,20 @@ func Handler[T any](
     opts    ...Option[T],   // Optional overrides (see Options below)
 ) http.Handler
 ```
+For example, using [httprouter](https://github.com/julienschmidt/httprouter) looks like this:
 
-With no options, `Handler` decodes JSON with `JSONDecoder`, validates with `StructValidator`, and reports errors with `JSONErrorHandler` — the three defaults every endpoint needs, without having to name them.
+```go
+router := httprouter.New()
+router.POST("/user/create", mid.Handler(createUser))
+```
 
-### HandlerFunc[T]
-
-Your handler function must match the `HandlerFunc[T]` signature:
+Your handler function must match the `HandlerFunc[T]` signature which differs from a regular [http.Handler](https://pkg.go.dev/net/http#Handler)
 
 ```go
 type HandlerFunc[T any] func(input T) (error, any)
 ```
 
-- **input**: The hydrated input struct (decoded from JSON and validated)
-- **returns**: An error (if something went wrong) and any response value (encoded as JSON)
+However, the result returned by `mid.Handler()` is a `net/http` compatible handler which makes using mid with other frameworks or existing systems easy.
 
 ### Full Example
 
@@ -55,18 +75,14 @@ type CreateUserInput struct {
 
 // Define your response struct
 type CreateUserResponse struct {
-    ID    int    `json:"id"`
-    Status string `json:"status"`
+    ID int `json:"id"`
 }
 
 // Your handler logic
-func createUser(input CreateUserInput) (error, any) {
+func createUser(input CreateUserInput) (any, error) {
     // 'input' is auto-populated and passed validation
     // ... business logic here ...
-    return nil, CreateUserResponse{
-        ID:     123,
-        Status: "created",
-    }
+    return CreateUserResponse{ ID: 123 }, nil
 }
 
 func main() {
@@ -156,7 +172,7 @@ This package uses [go-playground/validator](https://github.com/go-playground/val
 
 ### Important Notes
 
-1. **Global Validator Instance**: The package maintains a global `ValidatorInstance` (`*validator.Validate`) that is shared across all validation calls. This instance is lazily initialized on first use.
+1. **Global Validator Instance**: The package maintains a global `ValidatorInstance` (`*validator.Validate`) that is shared across all validation calls.
 
 2. **Validation Tags**: Use the `validate` struct tag to define validation rules:
 
@@ -171,7 +187,7 @@ type Input struct {
 }
 ```
 
-3. **Validation Errors**: When validation fails, the raw `validator.ValidationErrors` slice is returned as JSON, allowing clients to inspect which fields failed validation.
+3. **Validation Errors**: When validation fails, a JSON object is returned, allowing clients to inspect which fields failed validation.
 
 4. **Custom Validators**: You can register custom validation functions on `ValidatorInstance` before first use:
 
@@ -179,20 +195,6 @@ type Input struct {
 mid.ValidatorInstance = validator.New()
 mid.ValidatorInstance.RegisterValidation("custom_rule", myCustomValidator)
 ```
-
-### Common Validation Tags
-
-| Tag | Description |
-|-----|-------------|
-| `required` | Field must be set and non-empty |
-| `email` | Field must be a valid email address |
-| `min=N` | Field must be >= N |
-| `max=N` | Field must be <= N |
-| `gte=N` | Field must be >= N (for numbers) |
-| `lte=N` | Field must be <= N (for numbers) |
-| `oneof=x y z` | Field must be one of the specified values |
-| `url` | Field must be a valid URL |
-| `len=N` | Field must have exactly length N |
 
 For a complete list of validation tags, see the [go-playground/validator documentation](https://pkg.go.dev/github.com/go-playground/validator/v10#readme-builtin-validators).
 
