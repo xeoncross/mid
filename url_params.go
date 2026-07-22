@@ -7,8 +7,9 @@ import (
 	"strconv"
 )
 
-// FieldQuery defines the struct field name for looking up query parameters
-var FieldQuery = "query"
+// FieldQuery is the struct tag key used to look up a field's query-parameter
+// name, e.g. `query:"page"`.
+const FieldQuery = "query"
 
 // fieldTag pairs a struct field's index with the tag value used to look it
 // up in the request, so the field can later be found with Field(Index)
@@ -20,7 +21,7 @@ type fieldTag struct {
 	Index int
 }
 
-// ScanFields walks t once and records the exported fields that carry a tagKey
+// scanFields walks t once and records the exported fields that carry a tagKey
 // tag.
 func scanFields(t reflect.Type, tagKey string) []fieldTag {
 	fields := make([]fieldTag, 0, t.NumField())
@@ -43,7 +44,7 @@ func scanFields(t reflect.Type, tagKey string) []fieldTag {
 	return fields
 }
 
-// ApplyQueryParams matches tags against query parameters found in
+// applyQueryParams matches tags against query parameters found in
 // r.URL.RawQuery and sets the corresponding fields on v. v must be a
 // non-nil pointer to a struct so the fields can be updated.
 func applyQueryParams(r *http.Request, v any, tags []fieldTag) error {

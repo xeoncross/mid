@@ -151,31 +151,33 @@ func BenchmarkHandlerWithType(b *testing.B) {
 // leaves the original error message intact instead of masking it as
 // ErrJSONInvalid.
 func TestJSONDecoderWithInvalidUnmarshalError(t *testing.T) {
-	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/user", bytes.NewBufferString(`{"name":"example"}`))
 
 	var nilInput *User
-	if JSONDecoder(recorder, request, nilInput) {
-		t.Fatal("expected JSONDecoder to return false for a nil destination pointer")
+	err := JSONDecoder(request, nilInput)
+	if err == nil {
+		t.Fatal("expected JSONDecoder to return an error for a nil destination pointer")
 	}
-	if recorder.Body.String() != `{"error":"json: Unmarshal(nil *mid.User)"}`+"\n" {
-		t.Errorf("unexpected response: %s", recorder.Body.String())
+	if err.Error() != "json: Unmarshal(nil *mid.User)" {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 
 // TestStructValidatorNonStruct covers StructValidator's non-ValidationErrors
-// branch: validating a non-struct yields *InvalidValidationError, which falls
-// through to JSONErrorHandler instead of the 400 field-errors response.
+// branch: validating a non-struct yields *InvalidValidationError, which is
+// returned as-is instead of a ValidationErrors.
 func TestStructValidatorNonStruct(t *testing.T) {
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/user", nil)
-
 	// note int "5" is the decode input
-	if StructValidator(recorder, request, 5) {
-		t.Fatal("expected StructValidator to return false for a non-struct input")
+	err := StructValidator(5)
+	if err == nil {
+		t.Fatal("expected StructValidator to return an error for a non-struct input")
 	}
-	if recorder.Body.String() != `{"error":"validator: (nil int)"}`+"\n" {
-		t.Errorf("unexpected response: %s", recorder.Body.String())
+	var ve ValidationErrors
+	if errors.As(err, &ve) {
+		t.Errorf("expected a non-ValidationErrors error, got %v", err)
+	}
+	if err.Error() != "validator: (nil int)" {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 
@@ -202,6 +204,47 @@ func TestValidatorRejectsInput(t *testing.T) {
 	want := `{"errors":[{"field":"RequiredUser.Name","tag":"required","message":"failed 'required' validation"}]}` + "\n"
 	if recorder.Body.String() != want {
 		t.Errorf("unexpected response: %s", recorder.Body.String())
+	}
+}
+
+// TestErrorHandlerReceivesDecodeAndValidationErrors is the regression guard for
+// the DI fix: a custom WithErrorHandler must handle decode and validation
+// failures too, not just handler-returned errors. Previously JSONDecoder and
+// StructValidator hard-coded the default JSONErrorHandler, so the override was
+// silently bypassed for those two branches.
+func TestErrorHandlerReceivesDecodeAndValidationErrors(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"decodeError", `{invalid json}`},
+		{"validationError", `{}`}, // RequiredUser.Name is required
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			called := false
+			var got error
+			customErrHandler := ErrorHandler[RequiredUser](func(w http.ResponseWriter, r *http.Request, input RequiredUser, err error) {
+				called = true
+				got = err
+				w.WriteHeader(http.StatusTeapot)
+			})
+
+			h := func(u RequiredUser) (any, error) { return u, nil }
+			handler := Handler(h, WithErrorHandler(customErrHandler))
+			recorder := serve(handler, c.body)
+
+			if !called {
+				t.Fatalf("expected custom ErrorHandler to be called for %s", c.name)
+			}
+			if got == nil {
+				t.Error("expected a non-nil error passed to the ErrorHandler")
+			}
+			if recorder.Code != http.StatusTeapot {
+				t.Errorf("expected custom status %d, got %d", http.StatusTeapot, recorder.Code)
+			}
+		})
 	}
 }
 
@@ -233,17 +276,21 @@ func TestValidatorRejectsNestedInput(t *testing.T) {
 	}
 }
 
-// TestHandlerShortCircuits tests that when the decoder or validator returns
-// false, the handler is never called and the callback's own response (written
-// here via http.Error, hence the plain-text body) is preserved.
+// TestHandlerShortCircuits tests that when the decoder or validator returns an
+// error, the handler is never called and the error is routed through the
+// configured ErrorHandler (here a custom onErr that writes a distinct status
+// and plain-text body, proving DI reaches decode/validation failures).
 func TestHandlerShortCircuits(t *testing.T) {
-	failingDecoder := func(w http.ResponseWriter, r *http.Request, input *User) bool {
-		http.Error(w, "decoder rejected", http.StatusUnauthorized)
-		return false
+	failingDecoder := func(r *http.Request, input *User) error {
+		return errors.New("decoder rejected")
 	}
-	failingValidator := func(w http.ResponseWriter, r *http.Request, input User) bool {
-		http.Error(w, "validation failed", http.StatusForbidden)
-		return false
+	failingValidator := func(input User) error {
+		return errors.New("validation failed")
+	}
+	onErr := func(status int) ErrorHandler[User] {
+		return func(w http.ResponseWriter, r *http.Request, input User, err error) {
+			http.Error(w, err.Error(), status)
+		}
 	}
 
 	cases := []struct {
@@ -255,14 +302,14 @@ func TestHandlerShortCircuits(t *testing.T) {
 		{
 			"failingDecoder",
 			func(h HandlerFunc[User]) http.Handler {
-				return Handler(h, WithDecoder(failingDecoder))
+				return Handler(h, WithDecoder(failingDecoder), WithErrorHandler(onErr(http.StatusUnauthorized)))
 			},
 			http.StatusUnauthorized, "decoder rejected\n",
 		},
 		{
 			"failingValidator",
 			func(h HandlerFunc[User]) http.Handler {
-				return Handler(h, WithValidator(failingValidator))
+				return Handler(h, WithValidator(failingValidator), WithErrorHandler(onErr(http.StatusForbidden)))
 			},
 			http.StatusForbidden, "validation failed\n",
 		},
@@ -343,16 +390,16 @@ func (e *errorWriter) WriteHeader(statusCode int) {
 }
 
 // TestHandlerWithWriteErrorDuringResponse tests that when json.Encode fails
-// while writing the response body (e.g. client disconnect), the ErrorHandler
-// is invoked with the write error.
+// while writing the response body (e.g. client disconnect), the failure is
+// logged rather than routed to the ErrorHandler: the 200 status line is already
+// on the wire, so switching to an error response would be a superfluous
+// WriteHeader. The handler must not panic and must not invoke the ErrorHandler.
 func TestHandlerWithWriteErrorDuringResponse(t *testing.T) {
 	writeErr := errors.New("broken pipe: write failed")
 	errorHandlerCalled := false
-	var capturedError error
 
 	customErrHandler := ErrorHandler[User](func(w http.ResponseWriter, r *http.Request, input User, err error) {
 		errorHandlerCalled = true
-		capturedError = err
 	})
 
 	recorder := &errorWriter{
@@ -362,13 +409,10 @@ func TestHandlerWithWriteErrorDuringResponse(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/user", bytes.NewBufferString(`{"name":"example"}`))
 
 	handler := Handler(UserHandler, WithErrorHandler(customErrHandler))
-	handler.ServeHTTP(recorder, request)
+	handler.ServeHTTP(recorder, request) // must not panic
 
-	if !errorHandlerCalled {
-		t.Error("expected ErrorHandler to be called when response encoding fails")
-	}
-	if capturedError != writeErr {
-		t.Errorf("expected captured error to be write error, got: %v", capturedError)
+	if errorHandlerCalled {
+		t.Error("expected ErrorHandler NOT to be called once the 200 status is already sent")
 	}
 }
 

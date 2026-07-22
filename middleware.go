@@ -33,8 +33,8 @@ func RequestThrottler(concurrentRequests int, timeout time.Duration) func(http.H
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			select {
 			case sema <- struct{}{}:
+				defer func() { <-sema }() // release even if next panics
 				next.ServeHTTP(w, r)
-				<-sema
 			case <-time.After(timeout):
 				http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
 				return
@@ -45,26 +45,14 @@ func RequestThrottler(concurrentRequests int, timeout time.Duration) func(http.H
 	}
 }
 
-// MaxBodySize limits the size of the request body to avoid a DOS with a large JSON structure
+// MaxBodySize limits the size of the request body to avoid a DOS with a large
+// JSON structure. It follows the func(http.Handler) http.Handler convention.
 // Go does this internally for multipart bodies: https://golang.org/src/net/http/request.go#L1136
-func MaxBodySize(next http.Handler, size int64) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, size)
-		next.ServeHTTP(w, r)
-	})
-}
-
-// MustQueryParams circit breaker middleware only forwards requests which
-// have the specified query params set
-func MustQueryParams(h http.Handler, params ...string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		for _, param := range params {
-			if q.Get(param) == "" {
-				http.Error(w, "missing "+param, http.StatusBadRequest)
-				return // exit early
-			}
-		}
-		h.ServeHTTP(w, r) // all params present, proceed
-	})
+func MaxBodySize(size int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, size)
+			next.ServeHTTP(w, r)
+		})
+	}
 }

@@ -51,7 +51,7 @@ router.POST("/user/create", mid.Handler(createUser))
 Your handler function must match the `HandlerFunc[T]` signature which differs from a regular [http.Handler](https://pkg.go.dev/net/http#Handler)
 
 ```go
-type HandlerFunc[T any] func(input T) (error, any)
+type HandlerFunc[T any] func(input T) (any, error)
 ```
 
 However, the result returned by `mid.Handler()` is a `net/http` compatible handler which makes using mid with other frameworks or existing systems easy.
@@ -118,9 +118,15 @@ mux.Handle("/users", mid.Handler(createUser,
 
 | Option | Overrides | Signature |
 |---|---|---|
-| `WithDecoder` | `JSONDecoder` | `func WithDecoder[T any](d Decoder[*T]) Option[T]` |
+| `WithDecoder` | `JSONDecoder` | `func WithDecoder[T any](d Decoder[T]) Option[T]` |
 | `WithValidator` | `StructValidator` | `func WithValidator[T any](v Validator[T]) Option[T]` |
 | `WithErrorHandler` | `JSONErrorHandler` | `func WithErrorHandler[T any](e ErrorHandler[T]) Option[T]` |
+
+A decoder or validator only *reports* failure — it returns an `error` and never
+touches the `http.ResponseWriter`. Every failure (query/body decode, validation,
+your handler's own error, or a response-encoding error) is routed through the one
+`ErrorHandler` configured via `WithErrorHandler`, so a single override changes how
+*all* errors are rendered.
 
 `WithDecoder` and `WithValidator` infer `T` from the function you pass in, so no type argument is needed. `ErrorHandler[T]` doesn't use `T` in its own signature, so when `WithErrorHandler` is the *only* option on a call, Go can't infer it from context and you need to spell it out:
 
@@ -132,30 +138,30 @@ mux.Handle("/users", mid.Handler(createUser, mid.WithErrorHandler[CreateUserInpu
 
 ### JSONDecoder[T]
 
-Decodes the request body into your input struct. Handles common JSON errors and returns appropriate error messages.
+Decodes the request body into your input struct. Handles common JSON errors and returns a descriptive error for the `ErrorHandler` to render.
 
 ```go
-type Decoder[T any] func(w http.ResponseWriter, r *http.Request, input T) bool
+type Decoder[T any] func(r *http.Request, input *T) error
 ```
 
-Returns `false` if decoding fails (error response is automatically written to the client).
+Returns a non-nil `error` if decoding fails; the error is routed to the configured `ErrorHandler`.
 
 ### StructValidator[T]
 
 Validates your input struct using `go-playground/validator`.
 
 ```go
-type Validator[T any] func(w http.ResponseWriter, r *http.Request, input T) bool
+type Validator[T any] func(input T) error
 ```
 
-Returns `false` if validation fails (validation errors are automatically returned to the client as JSON).
+Returns a `ValidationErrors` if constraints fail (rendered by `JSONErrorHandler` as a structured `{"errors":[...]}` body), or any other `error`, which is routed to the configured `ErrorHandler`.
 
 ### JSONErrorHandler
 
-Default error handler that returns errors in a consistent JSON format.
+Default error handler that renders every failure in a consistent JSON format.
 
 ```go
-type ErrorHandler func(w http.ResponseWriter, r *http.Request, err error)
+type ErrorHandler[T any] func(w http.ResponseWriter, r *http.Request, input T, err error)
 ```
 
 Default response format:
@@ -166,13 +172,37 @@ Default response format:
 }
 ```
 
+A `ValidationErrors` is instead rendered as its structured form:
+
+```json
+{
+    "errors": [
+        {"field": "User.Email", "tag": "email", "message": "failed 'email' validation"}
+    ]
+}
+```
+
 ## Validation with go-playground/validator
 
 This package uses [go-playground/validator](https://github.com/go-playground/validator) for struct validation. Validation rules are defined using struct tags.
 
 ### Important Notes
 
-1. **Global Validator Instance**: The package maintains a global `ValidatorInstance` (`*validator.Validate`) that is shared across all validation calls.
+1. **Validator behind an interface**: `mid` depends only on a small interface, so any implementation (including go-playground's `*validator.Validate`) can be used:
+
+   ```go
+   type Validate interface {
+       Struct(s any) error
+   }
+   ```
+
+   The default `StructValidator` is backed by the package-level `DefaultValidator` (a `validator.New()`). For dependency injection, build a validator explicitly and pass it per-handler with `NewStructValidator`:
+
+   ```go
+   v := validator.New()
+   v.RegisterValidation("custom_rule", myCustomValidator)
+   mux.Handle("/users", mid.Handler(createUser, mid.WithValidator(mid.NewStructValidator[CreateUserInput](v))))
+   ```
 
 2. **Validation Tags**: Use the `validate` struct tag to define validation rules:
 
@@ -189,11 +219,12 @@ type Input struct {
 
 3. **Validation Errors**: When validation fails, a JSON object is returned, allowing clients to inspect which fields failed validation.
 
-4. **Custom Validators**: You can register custom validation functions on `ValidatorInstance` before first use:
+4. **Custom Validators**: Configure a concrete `*validator.Validate` and assign it to `DefaultValidator` before first use, or inject it per-handler with `NewStructValidator` (see note 1):
 
 ```go
-mid.ValidatorInstance = validator.New()
-mid.ValidatorInstance.RegisterValidation("custom_rule", myCustomValidator)
+v := validator.New()
+v.RegisterValidation("custom_rule", myCustomValidator)
+mid.DefaultValidator = v // affects the default StructValidator globally
 ```
 
 For a complete list of validation tags, see the [go-playground/validator documentation](https://pkg.go.dev/github.com/go-playground/validator/v10#readme-builtin-validators).
@@ -203,16 +234,16 @@ For a complete list of validation tags, see the [go-playground/validator documen
 All components are designed to be replaceable. You can provide your own decoder, validator, or error handler by implementing the corresponding type:
 
 ```go
-// Custom decoder example
-func myDecoder[T any](w http.ResponseWriter, r *http.Request, input *T) bool {
+// Custom decoder example — populate *input, return an error to reject.
+func myDecoder[T any](r *http.Request, input *T) error {
     // Custom decoding logic
-    return true
+    return nil
 }
 
-// Custom validator example
-func myValidator[T any](w http.ResponseWriter, r *http.Request, input T) bool {
+// Custom validator example — return an error to reject.
+func myValidator[T any](input T) error {
     // Custom validation logic
-    return true
+    return nil
 }
 
 // Usage
